@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Label Counter — Config</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;600;700&display=swap');
+
+  :root {
+    --bg:      #0d0f12;
+    --surface: #161a1f;
+    --border:  #2a2f38;
+    --accent:  #00e5a0;
+    --accent2: #ff6b35;
+    --text:    #e0e6ef;
+    --muted:   #5a6475;
+    --mono:    'Share Tech Mono', monospace;
+    --sans:    'Barlow', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,.07) 2px,
+      rgba(0,0,0,.07) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .logo-box {
+    width: 36px; height: 36px;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%);
+  }
+  .logo-box svg { width:20px; height:20px; fill: #0d0f12; }
+  .brand { font-size: 1.1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .brand span { color: var(--accent); }
+  .tag {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+  }
+
+  main { max-width: 620px; margin: 0 auto; padding: 32px 20px 60px; }
+
+  /* Live stats strip */
+  .stats-strip {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+  }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: .65rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    color: var(--accent);
+    font-weight: 400;
+  }
+  .stat-value.warn { color: var(--accent2); }
+
+  /* Section heading */
+  .section-title {
+    font-size: .7rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .2em;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Form */
+  form { display: flex; flex-direction: column; gap: 0; }
+
+  .field-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+    margin-bottom: 2px;
+    transition: border-color .2s;
+  }
+  .field-group:hover { border-color: var(--accent); }
+  .field-group:first-of-type { border-radius: 4px 4px 0 0; }
+  .field-group:last-of-type  { border-radius: 0 0 4px 4px; margin-bottom: 24px; }
+
+  .field-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .field-name {
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--text);
+  }
+  .field-unit {
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+  }
+  .field-desc {
+    font-size: .78rem;
+    color: var(--muted);
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    background: var(--border);
+    outline: none;
+    border-radius: 0;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    background: var(--accent);
+    cursor: pointer;
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    transition: transform .15s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+
+  input[type=number] {
+    width: 90px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 1rem;
+    padding: 6px 10px;
+    text-align: right;
+    outline: none;
+    transition: border-color .2s;
+  }
+  input[type=number]:focus { border-color: var(--accent); }
+
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  button {
+    flex: 1;
+    padding: 14px;
+    font-family: var(--sans);
+    font-size: .85rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: none;
+    transition: all .2s;
+  }
+  .btn-save {
+    background: var(--accent);
+    color: #0d0f12;
+    clip-path: polygon(0 0, 100% 0, 100% 80%, 96% 100%, 0 100%);
+  }
+  .btn-save:hover { background: #00ffb3; transform: translateY(-1px); }
+  .btn-reset {
+    background: transparent;
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+  }
+  .btn-reset:hover { background: rgba(255,107,53,.12); }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--accent);
+    color: #0d0f12;
+    font-family: var(--mono);
+    font-size: .8rem;
+    padding: 12px 20px;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all .35s cubic-bezier(.23,1,.32,1);
+    font-weight: 700;
+    letter-spacing: .05em;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+
+  /* Count reset section */
+  .count-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 20px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .count-big {
+    font-family: var(--mono);
+    font-size: 2.8rem;
+    color: var(--accent);
+  }
+  .btn-reset-count {
+    background: transparent;
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    padding: 10px 20px;
+    font-family: var(--mono);
+    font-size: .8rem;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    transition: all .2s;
+  }
+  .btn-reset-count:hover { background: rgba(255,107,53,.15); }
+
+  .vib-indicator {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+    margin-right: 6px;
+    transition: background .1s;
+  }
+  .vib-indicator.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-box">
+    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  </div>
+  <div class="brand">Label<span>Counter</span></div>
+  <div class="tag" id="device-id">ID: --</div>
+</header>
+
+<main>
+
+  <div class="stats-strip">
+    <div class="stat-card">
+      <div class="stat-label">Count</div>
+      <div class="stat-value" id="live-count">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Vibration</div>
+      <div class="stat-value" id="live-vib">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">MQTT</div>
+      <div class="stat-value" id="live-mqtt">--</div>
+    </div>
+  </div>
+
+  <div class="section-title">Threshold Parameters</div>
+
+  <form id="cfg-form">
+
+    <div class="field-group">
+      <div class="field-header">
+        <span class="field-name">Vibration Threshold</span>
+        <span class="field-unit">raw Δ</span>
+      </div>
+      <div class="field-desc">Minimum acceleration delta above idle baseline to detect sewing activity. Lower = more sensitive.</div>
+      <div class="slider-row">
+        <input type="range" id="s-threshold" min="100" max="5000" step="50">
+        <input type="number"  id="n-threshold" min="100" max="5000" step="50">
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="field-header">
+        <span class="field-name">Min Duration</span>
+        <span class="field-unit">ms</span>
+      </div>
+      <div class="field-desc">Vibration must persist at least this long to be confirmed as a sewing event. Prevents false triggers from bumps.</div>
+      <div class="slider-row">
+        <input type="range" id="s-minDur" min="100" max="3000" step="50">
+        <input type="number"  id="n-minDur" min="100" max="3000" step="50">
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="field-header">
+        <span class="field-name">Silence Window</span>
+        <span class="field-unit">ms</span>
+      </div>
+      <div class="field-desc">Quiet time after vibration stops before a count is registered. Prevents multi-counting on a single label.</div>
+      <div class="slider-row">
+        <input type="range" id="s-silence" min="200" max="5000" step="50">
+        <input type="number"  id="n-silence" min="200" max="5000" step="50">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" class="btn-save">&#9654; Save Parameters</button>
+      <button type="button" class="btn-reset" onclick="resetDefaults()">Reset Defaults</button>
+    </div>
+  </form>
+
+  <div class="section-title" style="margin-top:32px">Count Control</div>
+
+  <div class="count-section">
+    <div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;font-family:var(--mono)">CURRENT COUNT</div>
+      <div class="count-big" id="count-display">--</div>
+    </div>
+    <button class="btn-reset-count" onclick="resetCount()">&#9744; Reset to Zero</button>
+  </div>
+
+</main>
+
+<div id="toast">&#10003; Configuration saved</div>
+
+<script>
+  // ── Sync sliders ↔ number inputs ──────────────────────────────────────────
+  const pairs = [
+    ['s-threshold', 'n-threshold'],
+    ['s-minDur',    'n-minDur'],
+    ['s-silence',   'n-silence'],
+  ];
+  pairs.forEach(([sid, nid]) => {
+    const s = document.getElementById(sid);
+    const n = document.getElementById(nid);
+    s.addEventListener('input', () => { n.value = s.value; });
+    n.addEventListener('input', () => { s.value = n.value; });
+  });
+
+  // ── Load current config ───────────────────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const r = await fetch('/api/config');
+      const d = await r.json();
+      document.getElementById('s-threshold').value = d.threshold;
+      document.getElementById('n-threshold').value = d.threshold;
+      document.getElementById('s-minDur').value    = d.minDur;
+      document.getElementById('n-minDur').value    = d.minDur;
+      document.getElementById('s-silence').value   = d.silence;
+      document.getElementById('n-silence').value   = d.silence;
+      document.getElementById('device-id').textContent = 'ID: ' + (d.deviceId || '--');
+    } catch(e) { console.error(e); }
+  }
+
+  // ── Live status polling ───────────────────────────────────────────────────
+  async function pollStatus() {
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      document.getElementById('live-count').textContent = d.count ?? '--';
+      document.getElementById('count-display').textContent = d.count ?? '--';
+      const vibEl = document.getElementById('live-vib');
+      vibEl.textContent = (d.mag ?? '--');
+      vibEl.className = 'stat-value' + (d.vibActive ? ' warn' : '');
+      const mqttEl = document.getElementById('live-mqtt');
+      mqttEl.textContent = d.mqtt ? 'OK' : 'OFF';
+      mqttEl.className   = 'stat-value' + (d.mqtt ? '' : ' warn');
+    } catch(e) {}
+  }
+
+  // ── Save form ─────────────────────────────────────────────────────────────
+  document.getElementById('cfg-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      threshold: parseInt(document.getElementById('n-threshold').value),
+      minDur:    parseInt(document.getElementById('n-minDur').value),
+      silence:   parseInt(document.getElementById('n-silence').value),
+    };
+    const r = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (r.ok) showToast('Configuration saved');
+    else      showToast('Save failed — check device');
+  });
+
+  function resetDefaults() {
+    fetch('/api/reset-config', { method: 'POST' })
+      .then(() => { loadConfig(); showToast('Defaults restored'); });
+  }
+
+  function resetCount() {
+    if (!confirm('Reset count to zero?')) return;
+    fetch('/api/reset-count', { method: 'POST' })
+      .then(() => showToast('Count reset'));
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = '✓ ' + msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  loadConfig();
+  setInterval(pollStatus, 1500);
+</script>
+</body>
+</html>
