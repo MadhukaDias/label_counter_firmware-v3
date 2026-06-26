@@ -150,6 +150,14 @@ void loop() {
         bool counted = imuUpdate(appCfg.vib, &newVib);
         vibActive    = newVib;
 
+        // NEW: Real-time Serial Plotting
+        Serial.print(">Magnitude:");
+        Serial.print(imuGetMagnitude());
+        Serial.print(",Threshold:");
+        Serial.print(appCfg.vib.threshold);
+        Serial.print(",Active:");
+        Serial.println(newVib ? (appCfg.vib.threshold * 1.2) : 0.0);
+
         if      (!vibActive && !counted) sewState = 0;
         else if (vibActive)              sewState = 2;
         if      (counted)                sewState = 0;

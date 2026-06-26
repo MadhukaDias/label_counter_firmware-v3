@@ -416,7 +416,13 @@
     <!-- Vibration plot -->
     <div class="chart-wrap">
       <div class="chart-hdr">
-        <span class="chart-title">&#9640; Live Vibration Magnitude</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="chart-title">&#9640; Live Vibration Magnitude</span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+            <input type="checkbox" id="plot-toggle" checked style="accent-color:var(--acc)">
+            <span style="font-family:var(--mono);font-size:0.6rem;color:var(--dim);text-transform:uppercase">Plot Data</span>
+          </label>
+        </div>
         <span class="thr-line-lbl" id="thr-lbl">THR: --</span>
       </div>
       <canvas id="chart" height="110"></canvas>
@@ -491,7 +497,7 @@
     canvas.width = W;
     canvas.height = H;
 
-    const HIST = 120;   // samples to keep
+    const HIST = 80;   // samples to keep
     const magBuf = new Array(HIST).fill(0);
     const actBuf = new Array(HIST).fill(false);
     const pendingBuf = new Array(HIST).fill(false);
@@ -513,6 +519,17 @@
         ctx.fillText(Math.round((i / 4) * maxVal), 3, y - 2);
       }
 
+      // X-axis moving stamps (every sample = 300ms)
+      ctx.beginPath();
+      const step = W / (HIST - 1);
+      for (let i = 0; i < HIST; i++) {
+        const x = i * step;
+        ctx.moveTo(x, H);
+        ctx.lineTo(x, H - 4);
+      }
+      ctx.strokeStyle = '#5a6475';
+      ctx.stroke();
+
       // Threshold line
       const ty = H - (curThr / maxVal) * H;
       ctx.strokeStyle = '#ff6b35';
@@ -522,7 +539,6 @@
       ctx.setLineDash([]);
 
       // Fill under curve
-      const step = W / (HIST - 1);
       ctx.beginPath();
       ctx.moveTo(0, H);
       for (let i = 0; i < HIST; i++) {
@@ -593,31 +609,33 @@
     async function poll() {
       try {
         const d = await (await fetch('/api/status')).json();
-        magBuf.shift(); magBuf.push(d.mag || 0);
-        pendingBuf.shift(); pendingBuf.push(d.vibActive || false);
-        actBuf.shift(); actBuf.push(false);
+        
+        if (isPlotting) {
+          magBuf.shift(); magBuf.push(d.mag || 0);
+          pendingBuf.shift(); pendingBuf.push(d.vibActive || false);
+          actBuf.shift(); actBuf.push(false);
 
-        if (lastCount !== null && d.count !== undefined && d.count > lastCount) {
-          let foundTrue = false;
-          let falseCount = 0;
-          for (let i = HIST - 1; i >= 0; i--) {
-            if (pendingBuf[i]) {
-              actBuf[i] = true;
-              pendingBuf[i] = false;
-              foundTrue = true;
-              for (let j = 1; j <= falseCount; j++) {
-                if (i + j < HIST) actBuf[i + j] = true;
+          if (lastCount !== null && d.count !== undefined && d.count > lastCount) {
+            let foundTrue = false;
+            let falseCount = 0;
+            for (let i = HIST - 1; i >= 0; i--) {
+              if (pendingBuf[i]) {
+                actBuf[i] = true;
+                pendingBuf[i] = false;
+                foundTrue = true;
+                for (let j = 1; j <= falseCount; j++) {
+                  if (i + j < HIST) actBuf[i + j] = true;
+                }
+                falseCount = 0;
+              } else if (foundTrue) {
+                falseCount++;
+                if (falseCount > 20) break; // ~6 seconds gap tolerance
               }
-              falseCount = 0;
-            } else if (foundTrue) {
-              falseCount++;
-              if (falseCount > 20) break; // ~6 seconds gap tolerance
             }
           }
+          drawChart();
         }
         if (d.count !== undefined) lastCount = d.count;
-
-        drawChart();
 
         document.getElementById('lc').textContent = d.count ?? '--';
         document.getElementById('cnt-big').textContent = d.count ?? '--';
@@ -667,8 +685,16 @@
       setTimeout(() => t.classList.remove('show'), 2800);
     }
 
+    let isPlotting = true;
+    let pollTimer = setInterval(poll, 300);
+
+    document.getElementById('plot-toggle').addEventListener('change', (e) => {
+      isPlotting = e.target.checked;
+      clearInterval(pollTimer);
+      pollTimer = setInterval(poll, isPlotting ? 300 : 2000);
+    });
+
     loadConfig();
-    setInterval(poll, 300);   // 300ms = ~3 Hz update for smooth chart
   </script>
 </body>
 
