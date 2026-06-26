@@ -1,466 +1,646 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Label Counter — Config</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;600;700&display=swap');
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Label Counter</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;600;700&display=swap');
 
-  :root {
-    --bg:      #0d0f12;
-    --surface: #161a1f;
-    --border:  #2a2f38;
-    --accent:  #00e5a0;
-    --accent2: #ff6b35;
-    --text:    #e0e6ef;
-    --muted:   #5a6475;
-    --mono:    'Share Tech Mono', monospace;
-    --sans:    'Barlow', sans-serif;
-  }
+    :root {
+      --bg: #0d0f12;
+      --surf: #161a1f;
+      --brd: #2a2f38;
+      --acc: #00e5a0;
+      --acc2: #ff6b35;
+      --txt: #e0e6ef;
+      --dim: #5a6475;
+      --mono: 'Share Tech Mono', monospace;
+      --sans: 'Barlow', sans-serif;
+    }
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    min-height: 100vh;
-    padding: 0;
-  }
+    body {
+      background: var(--bg);
+      color: var(--txt);
+      font-family: var(--sans);
+      min-height: 100vh
+    }
 
-  /* Scanline overlay */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,.07) 2px,
-      rgba(0,0,0,.07) 4px
-    );
-    pointer-events: none;
-    z-index: 100;
-  }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, .06) 2px, rgba(0, 0, 0, .06) 4px);
+      pointer-events: none;
+      z-index: 9
+    }
 
-  header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 18px 28px;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-  .logo-box {
-    width: 36px; height: 36px;
-    background: var(--accent);
-    display: flex; align-items: center; justify-content: center;
-    clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%);
-  }
-  .logo-box svg { width:20px; height:20px; fill: #0d0f12; }
-  .brand { font-size: 1.1rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-  .brand span { color: var(--accent); }
-  .tag {
-    margin-left: auto;
-    font-family: var(--mono);
-    font-size: .72rem;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    padding: 3px 8px;
-  }
+    header {
+      background: var(--surf);
+      border-bottom: 1px solid var(--brd);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
 
-  main { max-width: 620px; margin: 0 auto; padding: 32px 20px 60px; }
+    .logo {
+      width: 34px;
+      height: 34px;
+      background: var(--acc);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%)
+    }
 
-  /* Live stats strip */
-  .stats-strip {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 32px;
-  }
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 14px 16px;
-    position: relative;
-    overflow: hidden;
-  }
-  .stat-card::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0;
-    width: 3px; height: 100%;
-    background: var(--accent);
-  }
-  .stat-label {
-    font-family: var(--mono);
-    font-size: .65rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .12em;
-    margin-bottom: 6px;
-  }
-  .stat-value {
-    font-family: var(--mono);
-    font-size: 1.5rem;
-    color: var(--accent);
-    font-weight: 400;
-  }
-  .stat-value.warn { color: var(--accent2); }
+    .logo svg {
+      width: 18px;
+      height: 18px;
+      fill: #0d0f12
+    }
 
-  /* Section heading */
-  .section-title {
-    font-size: .7rem;
-    font-family: var(--mono);
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .2em;
-    margin-bottom: 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .section-title::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-  }
+    .brand {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase
+    }
 
-  /* Form */
-  form { display: flex; flex-direction: column; gap: 0; }
+    .brand span {
+      color: var(--acc)
+    }
 
-  .field-group {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 20px;
-    margin-bottom: 2px;
-    transition: border-color .2s;
-  }
-  .field-group:hover { border-color: var(--accent); }
-  .field-group:first-of-type { border-radius: 4px 4px 0 0; }
-  .field-group:last-of-type  { border-radius: 0 0 4px 4px; margin-bottom: 24px; }
+    .did {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: .7rem;
+      color: var(--dim);
+      border: 1px solid var(--brd);
+      padding: 3px 8px
+    }
 
-  .field-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 10px;
-  }
-  .field-name {
-    font-weight: 600;
-    font-size: .9rem;
-    color: var(--text);
-  }
-  .field-unit {
-    font-family: var(--mono);
-    font-size: .72rem;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    padding: 2px 7px;
-  }
-  .field-desc {
-    font-size: .78rem;
-    color: var(--muted);
-    margin-bottom: 14px;
-    line-height: 1.5;
-  }
+    main {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 28px 18px 60px
+    }
 
-  .slider-row {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-  input[type=range] {
-    flex: 1;
-    -webkit-appearance: none;
-    height: 4px;
-    background: var(--border);
-    outline: none;
-    border-radius: 0;
-  }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 18px; height: 18px;
-    background: var(--accent);
-    cursor: pointer;
-    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-    transition: transform .15s;
-  }
-  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 28px
+    }
 
-  input[type=number] {
-    width: 90px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--accent);
-    font-family: var(--mono);
-    font-size: 1rem;
-    padding: 6px 10px;
-    text-align: right;
-    outline: none;
-    transition: border-color .2s;
-  }
-  input[type=number]:focus { border-color: var(--accent); }
+    .scard {
+      background: var(--surf);
+      border: 1px solid var(--brd);
+      padding: 12px 14px;
+      position: relative;
+      overflow: hidden
+    }
 
-  .btn-row {
-    display: flex;
-    gap: 12px;
-    margin-top: 8px;
-  }
-  button {
-    flex: 1;
-    padding: 14px;
-    font-family: var(--sans);
-    font-size: .85rem;
-    font-weight: 700;
-    letter-spacing: .1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    border: none;
-    transition: all .2s;
-  }
-  .btn-save {
-    background: var(--accent);
-    color: #0d0f12;
-    clip-path: polygon(0 0, 100% 0, 100% 80%, 96% 100%, 0 100%);
-  }
-  .btn-save:hover { background: #00ffb3; transform: translateY(-1px); }
-  .btn-reset {
-    background: transparent;
-    color: var(--accent2);
-    border: 1px solid var(--accent2);
-  }
-  .btn-reset:hover { background: rgba(255,107,53,.12); }
+    .scard::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+      background: var(--acc)
+    }
 
-  /* Toast */
-  #toast {
-    position: fixed;
-    bottom: 24px; right: 24px;
-    background: var(--accent);
-    color: #0d0f12;
-    font-family: var(--mono);
-    font-size: .8rem;
-    padding: 12px 20px;
-    transform: translateY(80px);
-    opacity: 0;
-    transition: all .35s cubic-bezier(.23,1,.32,1);
-    font-weight: 700;
-    letter-spacing: .05em;
-  }
-  #toast.show { transform: translateY(0); opacity: 1; }
+    .slbl {
+      font-family: var(--mono);
+      font-size: .6rem;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      margin-bottom: 5px
+    }
 
-  /* Count reset section */
-  .count-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 20px;
-    margin-top: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .count-big {
-    font-family: var(--mono);
-    font-size: 2.8rem;
-    color: var(--accent);
-  }
-  .btn-reset-count {
-    background: transparent;
-    color: var(--accent2);
-    border: 1px solid var(--accent2);
-    padding: 10px 20px;
-    font-family: var(--mono);
-    font-size: .8rem;
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: .1em;
-    transition: all .2s;
-  }
-  .btn-reset-count:hover { background: rgba(255,107,53,.15); }
+    .sval {
+      font-family: var(--mono);
+      font-size: 1.4rem;
+      color: var(--acc)
+    }
 
-  .vib-indicator {
-    display: inline-block;
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--muted);
-    margin-right: 6px;
-    transition: background .1s;
-  }
-  .vib-indicator.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-</style>
+    .sval.warn {
+      color: var(--acc2)
+    }
+
+    /* Chart */
+    .chart-wrap {
+      background: var(--surf);
+      border: 1px solid var(--brd);
+      padding: 16px;
+      margin-bottom: 28px
+    }
+
+    .chart-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px
+    }
+
+    .chart-title {
+      font-family: var(--mono);
+      font-size: .7rem;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: .15em
+    }
+
+    .thr-line-lbl {
+      font-family: var(--mono);
+      font-size: .65rem;
+      color: var(--acc2)
+    }
+
+    canvas {
+      width: 100% !important;
+      display: block;
+      image-rendering: pixelated
+    }
+
+    /* Section heading */
+    .sec {
+      font-size: .68rem;
+      font-family: var(--mono);
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: .2em;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px
+    }
+
+    .sec::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--brd)
+    }
+
+    /* Fields */
+    .fg {
+      background: var(--surf);
+      border: 1px solid var(--brd);
+      padding: 18px;
+      margin-bottom: 2px;
+      transition: border-color .2s
+    }
+
+    .fg:hover {
+      border-color: var(--acc)
+    }
+
+    .fhdr {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 8px
+    }
+
+    .fname {
+      font-weight: 600;
+      font-size: .88rem
+    }
+
+    .funit {
+      font-family: var(--mono);
+      font-size: .68rem;
+      color: var(--dim);
+      border: 1px solid var(--brd);
+      padding: 2px 6px
+    }
+
+    .fdesc {
+      font-size: .76rem;
+      color: var(--dim);
+      margin-bottom: 12px;
+      line-height: 1.5
+    }
+
+    .srow {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    input[type=range] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 4px;
+      background: var(--brd);
+      outline: none
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 17px;
+      height: 17px;
+      background: var(--acc);
+      cursor: pointer;
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      transition: transform .15s
+    }
+
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.3)
+    }
+
+    input[type=number] {
+      width: 86px;
+      background: var(--bg);
+      border: 1px solid var(--brd);
+      color: var(--acc);
+      font-family: var(--mono);
+      font-size: .95rem;
+      padding: 5px 9px;
+      text-align: right;
+      outline: none;
+      transition: border-color .2s
+    }
+
+    input[type=number]:focus {
+      border-color: var(--acc)
+    }
+
+    .brow {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px
+    }
+
+    button {
+      flex: 1;
+      padding: 13px;
+      font-family: var(--sans);
+      font-size: .82rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: none;
+      transition: all .2s
+    }
+
+    .bsave {
+      background: var(--acc);
+      color: #0d0f12;
+      clip-path: polygon(0 0, 100% 0, 100% 80%, 96% 100%, 0 100%)
+    }
+
+    .bsave:hover {
+      background: #00ffb3;
+      transform: translateY(-1px)
+    }
+
+    .breset {
+      background: transparent;
+      color: var(--acc2);
+      border: 1px solid var(--acc2)
+    }
+
+    .breset:hover {
+      background: rgba(255, 107, 53, .12)
+    }
+
+    /* Count control */
+    .cctl {
+      background: var(--surf);
+      border: 1px solid var(--brd);
+      padding: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px
+    }
+
+    .cbig {
+      font-family: var(--mono);
+      font-size: 2.6rem;
+      color: var(--acc)
+    }
+
+    .bcnt {
+      background: transparent;
+      color: var(--acc2);
+      border: 1px solid var(--acc2);
+      padding: 10px 18px;
+      font-family: var(--mono);
+      font-size: .78rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      transition: all .2s;
+      flex: none
+    }
+
+    .bcnt:hover {
+      background: rgba(255, 107, 53, .15)
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 22px;
+      right: 22px;
+      background: var(--acc);
+      color: #0d0f12;
+      font-family: var(--mono);
+      font-size: .78rem;
+      padding: 11px 18px;
+      transform: translateY(70px);
+      opacity: 0;
+      transition: all .32s cubic-bezier(.23, 1, .32, 1);
+      font-weight: 700;
+      letter-spacing: .05em
+    }
+
+    #toast.show {
+      transform: translateY(0);
+      opacity: 1
+    }
+
+    @media(max-width:500px) {
+      .stats {
+        grid-template-columns: 1fr 1fr
+      }
+    }
+  </style>
 </head>
+
 <body>
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24" stroke-width="0">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+      </svg></div>
+    <div class="brand">Label<span>Counter</span></div>
+    <div class="did" id="did">ID: --</div>
+  </header>
 
-<header>
-  <div class="logo-box">
-    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-  </div>
-  <div class="brand">Label<span>Counter</span></div>
-  <div class="tag" id="device-id">ID: --</div>
-</header>
-
-<main>
-
-  <div class="stats-strip">
-    <div class="stat-card">
-      <div class="stat-label">Count</div>
-      <div class="stat-value" id="live-count">--</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Vibration</div>
-      <div class="stat-value" id="live-vib">--</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">MQTT</div>
-      <div class="stat-value" id="live-mqtt">--</div>
-    </div>
-  </div>
-
-  <div class="section-title">Threshold Parameters</div>
-
-  <form id="cfg-form">
-
-    <div class="field-group">
-      <div class="field-header">
-        <span class="field-name">Vibration Threshold</span>
-        <span class="field-unit">raw Δ</span>
+  <main>
+    <!-- Live stats -->
+    <div class="stats">
+      <div class="scard">
+        <div class="slbl">Count</div>
+        <div class="sval" id="lc">--</div>
       </div>
-      <div class="field-desc">Minimum acceleration delta above idle baseline to detect sewing activity. Lower = more sensitive.</div>
-      <div class="slider-row">
-        <input type="range" id="s-threshold" min="100" max="5000" step="50">
-        <input type="number"  id="n-threshold" min="100" max="5000" step="50">
+      <div class="scard">
+        <div class="slbl">Vibration</div>
+        <div class="sval" id="lv">--</div>
+      </div>
+      <div class="scard">
+        <div class="slbl">State</div>
+        <div class="sval" id="ls">--</div>
+      </div>
+      <div class="scard">
+        <div class="slbl">MQTT</div>
+        <div class="sval" id="lm">--</div>
       </div>
     </div>
 
-    <div class="field-group">
-      <div class="field-header">
-        <span class="field-name">Min Duration</span>
-        <span class="field-unit">ms</span>
+    <!-- Vibration plot -->
+    <div class="chart-wrap">
+      <div class="chart-hdr">
+        <span class="chart-title">&#9640; Live Vibration Magnitude</span>
+        <span class="thr-line-lbl" id="thr-lbl">THR: --</span>
       </div>
-      <div class="field-desc">Vibration must persist at least this long to be confirmed as a sewing event. Prevents false triggers from bumps.</div>
-      <div class="slider-row">
-        <input type="range" id="s-minDur" min="100" max="3000" step="50">
-        <input type="number"  id="n-minDur" min="100" max="3000" step="50">
-      </div>
+      <canvas id="chart" height="110"></canvas>
     </div>
 
-    <div class="field-group">
-      <div class="field-header">
-        <span class="field-name">Silence Window</span>
-        <span class="field-unit">ms</span>
+    <!-- Threshold params -->
+    <div class="sec">Vibration Parameters</div>
+    <form id="cfg-form">
+      <div class="fg">
+        <div class="fhdr"><span class="fname">Vibration Threshold</span><span class="funit">raw Δ</span></div>
+        <div class="fdesc">Minimum 3-axis vibration delta above idle. Lower = more sensitive. Watch the live plot to
+          find your machine's active level.</div>
+        <div class="srow">
+          <input type="range" id="s-thr" min="100" max="8000" step="50">
+          <input type="number" id="n-thr" min="100" max="8000" step="50">
+        </div>
       </div>
-      <div class="field-desc">Quiet time after vibration stops before a count is registered. Prevents multi-counting on a single label.</div>
-      <div class="slider-row">
-        <input type="range" id="s-silence" min="200" max="5000" step="50">
-        <input type="number"  id="n-silence" min="200" max="5000" step="50">
+      <div class="fg">
+        <div class="fhdr"><span class="fname">Min Sewing Duration</span><span class="funit">ms</span></div>
+        <div class="fdesc">Vibration must persist this long to be confirmed. Prevents false triggers from bumps or table
+          knocks.</div>
+        <div class="srow">
+          <input type="range" id="s-dur" min="100" max="3000" step="50">
+          <input type="number" id="n-dur" min="100" max="3000" step="50">
+        </div>
       </div>
+      <div class="fg">
+        <div class="fhdr"><span class="fname">Silence Window</span><span class="funit">ms</span></div>
+        <div class="fdesc">Quiet time after sewing stops before count triggers. Prevents double-counting on a single
+          label.</div>
+        <div class="srow">
+          <input type="range" id="s-sil" min="200" max="5000" step="50">
+          <input type="number" id="n-sil" min="200" max="5000" step="50">
+        </div>
+      </div>
+      <div class="fg">
+        <div class="fhdr"><span class="fname">MQTT Publish Interval</span><span class="funit">seconds</span></div>
+        <div class="fdesc">How often to push count + status to MQTT broker. A count event always publishes immediately
+          regardless of this interval.</div>
+        <div class="srow">
+          <input type="range" id="s-mqi" min="5" max="300" step="5">
+          <input type="number" id="n-mqi" min="5" max="300" step="5">
+        </div>
+      </div>
+      <div class="fg" style="display:flex;align-items:center;gap:10px;padding:14px 18px">
+        <input type="checkbox" id="mqtt-toggle" style="width:18px;height:18px;accent-color:var(--acc)">
+        <label for="mqtt-toggle" class="fname">Enable MQTT Publishing</label>
+      </div>
+      <div class="brow">
+        <button type="submit" class="bsave">&#9654; Save All</button>
+        <button type="button" class="breset" onclick="resetDefs()">Reset Defaults</button>
+      </div>
+    </form>
+
+    <div class="sec" style="margin-top:28px">Count Control</div>
+    <div class="cctl">
+      <div>
+        <div style="font-size:.7rem;color:var(--dim);margin-bottom:3px;font-family:var(--mono)">CURRENT COUNT</div>
+        <div class="cbig" id="cnt-big">--</div>
+      </div>
+      <button class="bcnt" onclick="resetCount()">&#9744; Reset to Zero</button>
     </div>
+  </main>
 
-    <div class="btn-row">
-      <button type="submit" class="btn-save">&#9654; Save Parameters</button>
-      <button type="button" class="btn-reset" onclick="resetDefaults()">Reset Defaults</button>
-    </div>
-  </form>
+  <div id="toast"></div>
 
-  <div class="section-title" style="margin-top:32px">Count Control</div>
+  <script>
+    // ── Chart setup ────────────────────────────────────────────────────────────────
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+    const W = 640, H = 110;
+    canvas.width = W;
+    canvas.height = H;
 
-  <div class="count-section">
-    <div>
-      <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;font-family:var(--mono)">CURRENT COUNT</div>
-      <div class="count-big" id="count-display">--</div>
-    </div>
-    <button class="btn-reset-count" onclick="resetCount()">&#9744; Reset to Zero</button>
-  </div>
+    const HIST = 120;   // samples to keep
+    const magBuf = new Array(HIST).fill(0);
+    let curThr = 800;
 
-</main>
+    function drawChart() {
+      const maxVal = Math.max(curThr * 1.4, ...magBuf, 100);
+      ctx.clearRect(0, 0, W, H);
 
-<div id="toast">&#10003; Configuration saved</div>
+      // Grid lines
+      ctx.strokeStyle = '#2a2f38';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = Math.round(H - (i / 4) * H);
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+        ctx.fillStyle = '#5a6475';
+        ctx.font = '9px Share Tech Mono, monospace';
+        ctx.fillText(Math.round((i / 4) * maxVal), 3, y - 2);
+      }
 
-<script>
-  // ── Sync sliders ↔ number inputs ──────────────────────────────────────────
-  const pairs = [
-    ['s-threshold', 'n-threshold'],
-    ['s-minDur',    'n-minDur'],
-    ['s-silence',   'n-silence'],
-  ];
-  pairs.forEach(([sid, nid]) => {
-    const s = document.getElementById(sid);
-    const n = document.getElementById(nid);
-    s.addEventListener('input', () => { n.value = s.value; });
-    n.addEventListener('input', () => { s.value = n.value; });
-  });
+      // Threshold line
+      const ty = H - (curThr / maxVal) * H;
+      ctx.strokeStyle = '#ff6b35';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke();
+      ctx.setLineDash([]);
 
-  // ── Load current config ───────────────────────────────────────────────────
-  async function loadConfig() {
-    try {
-      const r = await fetch('/api/config');
-      const d = await r.json();
-      document.getElementById('s-threshold').value = d.threshold;
-      document.getElementById('n-threshold').value = d.threshold;
-      document.getElementById('s-minDur').value    = d.minDur;
-      document.getElementById('n-minDur').value    = d.minDur;
-      document.getElementById('s-silence').value   = d.silence;
-      document.getElementById('n-silence').value   = d.silence;
-      document.getElementById('device-id').textContent = 'ID: ' + (d.deviceId || '--');
-    } catch(e) { console.error(e); }
-  }
+      // Fill under curve
+      const step = W / (HIST - 1);
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let i = 0; i < HIST; i++) {
+        const x = i * step;
+        const y = H - (magBuf[i] / maxVal) * H;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,229,160,0.08)';
+      ctx.fill();
 
-  // ── Live status polling ───────────────────────────────────────────────────
-  async function pollStatus() {
-    try {
-      const r = await fetch('/api/status');
-      const d = await r.json();
-      document.getElementById('live-count').textContent = d.count ?? '--';
-      document.getElementById('count-display').textContent = d.count ?? '--';
-      const vibEl = document.getElementById('live-vib');
-      vibEl.textContent = (d.mag ?? '--');
-      vibEl.className = 'stat-value' + (d.vibActive ? ' warn' : '');
-      const mqttEl = document.getElementById('live-mqtt');
-      mqttEl.textContent = d.mqtt ? 'OK' : 'OFF';
-      mqttEl.className   = 'stat-value' + (d.mqtt ? '' : ' warn');
-    } catch(e) {}
-  }
+      // Line
+      ctx.strokeStyle = '#00e5a0';
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < HIST; i++) {
+        const x = i * step;
+        const y = H - (magBuf[i] / maxVal) * H;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
 
-  // ── Save form ─────────────────────────────────────────────────────────────
-  document.getElementById('cfg-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const body = {
-      threshold: parseInt(document.getElementById('n-threshold').value),
-      minDur:    parseInt(document.getElementById('n-minDur').value),
-      silence:   parseInt(document.getElementById('n-silence').value),
-    };
-    const r = await fetch('/api/config', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body)
+      // Current value dot
+      const lastY = H - (magBuf[HIST - 1] / maxVal) * H;
+      ctx.fillStyle = magBuf[HIST - 1] >= curThr ? '#ff6b35' : '#00e5a0';
+      ctx.beginPath();
+      ctx.arc(W - 1, lastY, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ── Slider ↔ number sync ───────────────────────────────────────────────────────
+    [['s-thr', 'n-thr'], ['s-dur', 'n-dur'], ['s-sil', 'n-sil'], ['s-mqi', 'n-mqi']]
+      .forEach(([sid, nid]) => {
+        const s = document.getElementById(sid);
+        const n = document.getElementById(nid);
+        s.addEventListener('input', () => { n.value = s.value; if (sid === 's-thr') { curThr = +s.value; document.getElementById('thr-lbl').textContent = 'THR: ' + s.value; } });
+        n.addEventListener('input', () => { s.value = n.value; if (nid === 'n-thr') { curThr = +n.value; document.getElementById('thr-lbl').textContent = 'THR: ' + n.value; } });
+      });
+
+    // ── Load config ────────────────────────────────────────────────────────────────
+    async function loadConfig() {
+      try {
+        const d = await (await fetch('/api/config')).json();
+        document.getElementById('s-thr').value = d.threshold;
+        document.getElementById('n-thr').value = d.threshold;
+        document.getElementById('s-dur').value = d.minDur;
+        document.getElementById('n-dur').value = d.minDur;
+        document.getElementById('s-sil').value = d.silence;
+        document.getElementById('n-sil').value = d.silence;
+        // mqttInterval stored in seconds in UI, ms on device
+        const mqtts = Math.round(d.mqttInterval / 1000);
+        document.getElementById('s-mqi').value = mqtts;
+        document.getElementById('n-mqi').value = mqtts;
+        document.getElementById('mqtt-toggle').checked = d.mqttEnabled;
+        document.getElementById('did').textContent = 'ID: ' + (d.deviceId || '--');
+        curThr = d.threshold;
+        document.getElementById('thr-lbl').textContent = 'THR: ' + curThr;
+      } catch (e) { console.error(e); }
+    }
+
+    // ── Poll status ────────────────────────────────────────────────────────────────
+    const STATES = ['IDLE', 'VIBRATING', 'CONFIRMED', 'COOLING'];
+    async function poll() {
+      try {
+        const d = await (await fetch('/api/status')).json();
+        magBuf.shift(); magBuf.push(d.mag || 0);
+        drawChart();
+
+        document.getElementById('lc').textContent = d.count ?? '--';
+        document.getElementById('cnt-big').textContent = d.count ?? '--';
+
+        const vEl = document.getElementById('lv');
+        vEl.textContent = d.mag ?? '--';
+        vEl.className = 'sval' + (d.vibActive ? ' warn' : '');
+
+        const sEl = document.getElementById('ls');
+        sEl.textContent = STATES[d.state] || '--';
+        sEl.className = 'sval' + (d.state > 0 ? ' warn' : '');
+
+        const mEl = document.getElementById('lm');
+        mEl.textContent = d.mqtt ? 'OK' : 'OFF';
+        mEl.className = 'sval' + (d.mqtt ? '' : ' warn');
+      } catch (e) { }
+    }
+
+    // ── Save ───────────────────────────────────────────────────────────────────────
+    document.getElementById('cfg-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const body = {
+        threshold: +document.getElementById('n-thr').value,
+        minDur: +document.getElementById('n-dur').value,
+        silence: +document.getElementById('n-sil').value,
+        mqttInterval: +document.getElementById('n-mqi').value * 1000,
+        mqttEnabled: document.getElementById('mqtt-toggle').checked
+      };
+      const r = await fetch('/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      toast(r.ok ? 'Configuration saved' : 'Save failed');
     });
-    if (r.ok) showToast('Configuration saved');
-    else      showToast('Save failed — check device');
-  });
 
-  function resetDefaults() {
-    fetch('/api/reset-config', { method: 'POST' })
-      .then(() => { loadConfig(); showToast('Defaults restored'); });
-  }
+    function resetDefs() {
+      fetch('/api/reset-config', { method: 'POST' }).then(() => { loadConfig(); toast('Defaults restored'); });
+    }
+    function resetCount() {
+      if (!confirm('Reset count to zero?')) return;
+      fetch('/api/reset-count', { method: 'POST' }).then(() => toast('Count reset'));
+    }
+    function toast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = '✓ ' + msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2800);
+    }
 
-  function resetCount() {
-    if (!confirm('Reset count to zero?')) return;
-    fetch('/api/reset-count', { method: 'POST' })
-      .then(() => showToast('Count reset'));
-  }
-
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = '✓ ' + msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2800);
-  }
-
-  loadConfig();
-  setInterval(pollStatus, 1500);
-</script>
+    loadConfig();
+    setInterval(poll, 300);   // 300ms = ~3 Hz update for smooth chart
+  </script>
 </body>
+
 </html>

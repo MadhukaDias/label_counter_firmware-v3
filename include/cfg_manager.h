@@ -6,6 +6,7 @@ struct AppConfig {
     VibConfig vib;
     uint32_t  count;             // persisted count
     uint32_t  mqttIntervalMs;    // how often to publish (ms)
+    bool      mqttEnabled;       // whether MQTT is enabled
     char      deviceId[24];
 };
 

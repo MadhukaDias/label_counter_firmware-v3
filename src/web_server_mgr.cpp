@@ -154,6 +154,10 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
         <input type="number" id="n-mqi" min="5" max="300" step="5">
       </div>
     </div>
+    <div class="fg" style="display:flex;align-items:center;gap:10px;padding:14px 18px">
+      <input type="checkbox" id="mqtt-toggle" style="width:18px;height:18px;accent-color:var(--acc)">
+      <label for="mqtt-toggle" class="fname">Enable MQTT Publishing</label>
+    </div>
     <div class="brow">
       <button type="submit" class="bsave">&#9654; Save All</button>
       <button type="button" class="breset" onclick="resetDefs()">Reset Defaults</button>
@@ -264,6 +268,7 @@ async function loadConfig() {
     const mqtts = Math.round(d.mqttInterval / 1000);
     document.getElementById('s-mqi').value = mqtts;
     document.getElementById('n-mqi').value = mqtts;
+    document.getElementById('mqtt-toggle').checked = d.mqttEnabled;
     document.getElementById('did').textContent = 'ID: ' + (d.deviceId || '--');
     curThr = d.threshold;
     document.getElementById('thr-lbl').textContent = 'THR: ' + curThr;
@@ -303,6 +308,7 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
     minDur:    +document.getElementById('n-dur').value,
     silence:   +document.getElementById('n-sil').value,
     mqttInterval: +document.getElementById('n-mqi').value * 1000,
+    mqttEnabled: document.getElementById('mqtt-toggle').checked
   };
   const r = await fetch('/api/config', {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -350,6 +356,7 @@ static void handleGetConfig() {
     doc["minDur"]       = _cfg->vib.minDurationMs;
     doc["silence"]      = _cfg->vib.silenceMs;
     doc["mqttInterval"] = _cfg->mqttIntervalMs;
+    doc["mqttEnabled"]  = _cfg->mqttEnabled;
     doc["count"]        = _cfg->count;
     doc["deviceId"]     = _cfg->deviceId;
     String out; serializeJson(doc, out);
@@ -369,6 +376,8 @@ static void handlePostConfig() {
         _cfg->vib.silenceMs     = constrain((int)doc["silence"], 200, 5000);
     if (doc["mqttInterval"].is<int>())
         _cfg->mqttIntervalMs    = constrain((int)doc["mqttInterval"], 5000, 300000);
+    if (doc["mqttEnabled"].is<bool>())
+        _cfg->mqttEnabled       = doc["mqttEnabled"];
 
     cfgSave(*_cfg);
     _updated = true;

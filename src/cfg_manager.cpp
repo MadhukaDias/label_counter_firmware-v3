@@ -11,6 +11,7 @@ void cfgLoad(AppConfig& cfg) {
     cfg.vib.minDurationMs  = prefs.getUInt("minDur",    DEF_MIN_DURATION_MS);
     cfg.vib.silenceMs      = prefs.getUInt("silence",   DEF_SILENCE_MS);
     cfg.mqttIntervalMs     = prefs.getUInt("mqttInt",   DEF_MQTT_INTERVAL_MS);
+    cfg.mqttEnabled        = prefs.getBool("mqttEn",    true);
 
     // FIX: sanity-check the stored count. NVS can hold garbage from a first
     // flash or a corrupted write. Any value above MAX_SANE_COUNT is treated as
@@ -45,6 +46,7 @@ void cfgSave(const AppConfig& cfg) {
     prefs.putUInt("silence",  cfg.vib.silenceMs);
     prefs.putUInt("count",    cfg.count);
     prefs.putUInt("mqttInt",  cfg.mqttIntervalMs);
+    prefs.putBool("mqttEn",   cfg.mqttEnabled);
     prefs.putString("deviceId", cfg.deviceId);
 
     prefs.end();

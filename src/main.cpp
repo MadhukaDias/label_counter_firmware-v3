@@ -69,14 +69,14 @@ static void handleButtons() {
         appCfg.count  = 0;
         cfgSaveCount(0);
         // FIX: guard MQTT publish with connection check
-        if (wifiOk && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
+        if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
         Serial.println("[BTN] Long INC → reset");
     }
     if (btnIncLast == LOW && incNow == HIGH && !btnIncLong && (now - btnIncDownMs) >= DEBOUNCE_MS) {
         appCfg.count++;
         cfgSaveCount(appCfg.count);
         // FIX: guard MQTT publish with connection check
-        if (wifiOk && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
+        if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
         Serial.printf("[BTN] +1 → %lu\n", (unsigned long)appCfg.count);
     }
 
@@ -90,14 +90,14 @@ static void handleButtons() {
         appCfg.count  = 0;
         cfgSaveCount(0);
         // FIX: guard MQTT publish with connection check
-        if (wifiOk && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
+        if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
         Serial.println("[BTN] Long DEC → reset");
     }
     if (btnDecLast == LOW && decNow == HIGH && !btnDecLong && (now - btnDecDownMs) >= DEBOUNCE_MS) {
         if (appCfg.count > 0) appCfg.count--;
         cfgSaveCount(appCfg.count);
         // FIX: guard MQTT publish with connection check
-        if (wifiOk && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
+        if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
         Serial.printf("[BTN] -1 → %lu\n", (unsigned long)appCfg.count);
     }
 
@@ -158,7 +158,7 @@ void loop() {
             appCfg.count++;
             Serial.printf("[COUNT] %lu\n", (unsigned long)appCfg.count);
             cfgSaveCount(appCfg.count);
-            if (wifiOk && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
+            if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
             lastMqttMs = now;
         }
     }
@@ -167,7 +167,7 @@ void loop() {
     handleButtons();
 
     // ── MQTT periodic heartbeat ──
-    if (wifiOk) {
+    if (wifiOk && appCfg.mqttEnabled) {
         mqttLoop();
         if (now - lastMqttMs >= appCfg.mqttIntervalMs) {
             lastMqttMs = now;
@@ -177,7 +177,7 @@ void loop() {
 
     // ── Web portal ──
     webServerLoop();
-    webServerSetMqttOk(wifiOk && mqttIsConnected());
+    webServerSetMqttOk(wifiOk && appCfg.mqttEnabled && mqttIsConnected());
     webServerSetVibActive(vibActive);
     webServerSetSewState(sewState);
 
