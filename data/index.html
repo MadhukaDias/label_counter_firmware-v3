@@ -494,7 +494,9 @@
     const HIST = 120;   // samples to keep
     const magBuf = new Array(HIST).fill(0);
     const actBuf = new Array(HIST).fill(false);
+    const pendingBuf = new Array(HIST).fill(false);
     let curThr = 800;
+    let lastCount = null;
 
     function drawChart() {
       const maxVal = Math.max(curThr * 1.4, ...magBuf, 100);
@@ -592,7 +594,29 @@
       try {
         const d = await (await fetch('/api/status')).json();
         magBuf.shift(); magBuf.push(d.mag || 0);
-        actBuf.shift(); actBuf.push(d.vibActive || false);
+        pendingBuf.shift(); pendingBuf.push(d.vibActive || false);
+        actBuf.shift(); actBuf.push(false);
+
+        if (lastCount !== null && d.count !== undefined && d.count > lastCount) {
+          let foundTrue = false;
+          let falseCount = 0;
+          for (let i = HIST - 1; i >= 0; i--) {
+            if (pendingBuf[i]) {
+              actBuf[i] = true;
+              pendingBuf[i] = false;
+              foundTrue = true;
+              for (let j = 1; j <= falseCount; j++) {
+                if (i + j < HIST) actBuf[i + j] = true;
+              }
+              falseCount = 0;
+            } else if (foundTrue) {
+              falseCount++;
+              if (falseCount > 20) break; // ~6 seconds gap tolerance
+            }
+          }
+        }
+        if (d.count !== undefined) lastCount = d.count;
+
         drawChart();
 
         document.getElementById('lc').textContent = d.count ?? '--';
