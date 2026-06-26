@@ -186,6 +186,7 @@ canvas.height = H;
 
 const HIST   = 120;   // samples to keep
 const magBuf = new Array(HIST).fill(0);
+const actBuf = new Array(HIST).fill(false);
 let   curThr = 800;
 
 function drawChart() {
@@ -225,17 +226,20 @@ function drawChart() {
   ctx.fillStyle = 'rgba(0,229,160,0.08)';
   ctx.fill();
 
-  // Line
-  ctx.strokeStyle = '#00e5a0';
+  // Line segments with state colors
   ctx.lineWidth   = 2;
   ctx.lineJoin    = 'round';
-  ctx.beginPath();
-  for (let i = 0; i < HIST; i++) {
-    const x = i * step;
-    const y = H - (magBuf[i] / maxVal) * H;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  for (let i = 1; i < HIST; i++) {
+    ctx.beginPath();
+    const x0 = (i - 1) * step;
+    const y0 = H - (magBuf[i - 1] / maxVal) * H;
+    const x1 = i * step;
+    const y1 = H - (magBuf[i] / maxVal) * H;
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.strokeStyle = (actBuf[i] || actBuf[i-1]) ? '#ff6b35' : '#00e5a0';
+    ctx.stroke();
   }
-  ctx.stroke();
 
   // Current value dot
   const lastY = H - (magBuf[HIST-1] / maxVal) * H;
@@ -281,6 +285,7 @@ async function poll() {
   try {
     const d = await (await fetch('/api/status')).json();
     magBuf.shift(); magBuf.push(d.mag || 0);
+    actBuf.shift(); actBuf.push(d.vibActive || false);
     drawChart();
 
     document.getElementById('lc').textContent = d.count ?? '--';
