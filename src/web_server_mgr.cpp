@@ -125,11 +125,28 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
     <canvas id="chart" height="110"></canvas>
   </div>
 
+  <!-- Calibration Results -->
+  <div class="sec" id="calib-sec" style="display:none">Calibration Results</div>
+  <div class="chart-wrap" id="calib-wrap" style="display:none; margin-bottom: 20px;">
+    <div class="chart-hdr">
+      <span class="chart-title">&#9640; Noise Analysis (3 seconds)</span>
+    </div>
+    <canvas id="calib-chart" height="130"></canvas>
+    <div style="font-size:0.7rem; color:var(--dim); padding:8px 0 0 5px; font-family:var(--mono); line-height: 1.4;">
+      <span style="color:#a0a0a0">&#9644;</span> Valid Noise | <span style="color:#ff4444">&#9644;</span> Neglected Spikes<br>
+      <span style="color:#00ff00">--</span> Median | <span style="color:#ffaa00">--</span> Spike Thr | <span style="color:#00ffff">--</span> Clean Max
+    </div>
+  </div>
+
   <!-- Threshold params -->
   <div class="sec">Vibration Parameters</div>
   <form id="cfg-form">
     <div class="fg">
-      <div class="fhdr"><span class="fname">Vibration Threshold</span><span class="funit">raw Δ</span></div>
+      <div class="fhdr">
+        <span class="fname">Vibration Threshold</span>
+        <button type="button" class="bcnt" style="margin-left:auto; font-size:0.7rem; padding:4px 8px; width:auto; border-color:var(--acc); color:var(--acc);" onclick="autoCalibrate()">Auto-Calibrate</button>
+        <span class="funit" style="margin-left:10px;">raw Δ</span>
+      </div>
       <div class="fdesc">Minimum 3-axis vibration delta above idle. Lower = more sensitive. Watch the live plot to find your machine's active level.</div>
       <div class="srow">
         <input type="range" id="s-thr" min="100" max="8000" step="50">
@@ -378,6 +395,18 @@ function toast(msg) {
   setTimeout(()=> t.classList.remove('show'), 2800);
 }
 
+function autoCalibrate() {
+  if (!confirm('Ensure the machine is ON but IDLE (not sewing). Continue?')) return;
+  toast('Calibrating... DO NOT TOUCH machine for 3s');
+  fetch('/api/calibrate', { method: 'POST' }).then(() => {
+    setTimeout(() => {
+      loadConfig();
+      loadCalibData();
+      toast('Calibration complete! Threshold saved.');
+    }, 3500);
+  });
+}
+
 let isPlotting = true;
 let pollTimer = setInterval(poll, 300);
 
@@ -387,7 +416,86 @@ document.getElementById('plot-toggle').addEventListener('change', (e) => {
   pollTimer = setInterval(poll, isPlotting ? 300 : 2000);
 });
 
+async function loadCalibData() {
+  try {
+    const res = await fetch('/api/calib_data');
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.samples || d.samples.length === 0) return;
+
+    document.getElementById('calib-sec').style.display = 'block';
+    document.getElementById('calib-wrap').style.display = 'block';
+
+    const cvs = document.getElementById('calib-chart');
+    const cx = cvs.getContext('2d');
+    const cw = 640, ch = 130;
+    cvs.width = cw; cvs.height = ch;
+
+    const maxVal = Math.max(...d.samples, d.spikeThr * 1.2, d.cleanMax * 1.5, 100);
+
+    cx.clearRect(0, 0, cw, ch);
+
+    cx.strokeStyle = '#2a2f38';
+    cx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = Math.round(ch - (i / 4) * ch);
+      cx.beginPath(); cx.moveTo(0, y); cx.lineTo(cw, y); cx.stroke();
+      cx.fillStyle = '#5a6475';
+      cx.font = '9px Share Tech Mono, monospace';
+      cx.fillText(Math.round((i / 4) * maxVal), 3, y - 2);
+    }
+
+    const step = cw / (d.samples.length - 1);
+
+    cx.beginPath(); cx.moveTo(0, ch);
+    for(let i=0; i<d.samples.length; i++) {
+      const x = i * step; const y = ch - (d.samples[i] / maxVal) * ch;
+      cx.lineTo(x, d.valid[i] ? y : ch);
+    }
+    cx.lineTo(cw, ch); cx.fillStyle = 'rgba(90, 100, 117, 0.3)'; cx.fill();
+
+    cx.beginPath(); cx.moveTo(0, ch);
+    for(let i=0; i<d.samples.length; i++) {
+      const x = i * step; const y = ch - (d.samples[i] / maxVal) * ch;
+      cx.lineTo(x, !d.valid[i] ? y : ch);
+    }
+    cx.lineTo(cw, ch); cx.fillStyle = 'rgba(255, 68, 68, 0.4)'; cx.fill();
+
+    cx.beginPath();
+    for(let i=0; i<d.samples.length; i++) {
+      const x = i * step; const y = ch - (d.samples[i] / maxVal) * ch;
+      if (i===0) cx.moveTo(x,y); else cx.lineTo(x,y);
+    }
+    cx.strokeStyle = '#5a6475'; cx.stroke();
+
+    cx.beginPath();
+    let drawingSpike = false;
+    for(let i=0; i<d.samples.length; i++) {
+      const x = i * step; const y = ch - (d.samples[i] / maxVal) * ch;
+      if (!d.valid[i]) {
+        if (!drawingSpike) { cx.beginPath(); cx.moveTo(x, y); drawingSpike=true; }
+        else cx.lineTo(x, y);
+      } else {
+        if (drawingSpike) { cx.lineTo(x, y); cx.strokeStyle = '#ff4444'; cx.stroke(); drawingSpike=false; }
+      }
+    }
+    if (drawingSpike) { cx.strokeStyle = '#ff4444'; cx.stroke(); }
+
+    const drawLine = (val, col, dash) => {
+      const y = ch - (val / maxVal) * ch;
+      cx.strokeStyle = col; cx.setLineDash(dash); cx.lineWidth = 1.5;
+      cx.beginPath(); cx.moveTo(0, y); cx.lineTo(cw, y); cx.stroke();
+    };
+    
+    drawLine(d.median, '#00ff00', [4, 4]);
+    drawLine(d.spikeThr, '#ffaa00', [2, 2]);
+    drawLine(d.cleanMax, '#00ffff', [4, 4]);
+    cx.setLineDash([]);
+  } catch(e) { console.error(e); }
+}
+
 loadConfig();
+loadCalibData();
 </script>
 </body>
 </html>
@@ -452,6 +560,43 @@ static void handleResetCount() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+extern void startCalibration();
+static void handleCalibrate() {
+    startCalibration();
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
+extern uint32_t calibBuffer[];
+extern bool calibValidBuf[];
+extern uint32_t calibMedian;
+extern uint32_t calibSpikeThr;
+extern uint32_t calibCleanMax;
+extern bool calibHasData;
+
+static void handleGetCalibData() {
+    if (!calibHasData) {
+        server.send(200, "application/json", "{}");
+        return;
+    }
+    
+    DynamicJsonDocument doc(4096);
+    JsonArray samples = doc["samples"].to<JsonArray>();
+    JsonArray valid = doc["valid"].to<JsonArray>();
+    
+    for (int i = 0; i < 150; i++) {
+        samples.add(calibBuffer[i]);
+        valid.add(calibValidBuf[i] ? 1 : 0);
+    }
+    
+    doc["median"]   = calibMedian;
+    doc["spikeThr"] = calibSpikeThr;
+    doc["cleanMax"] = calibCleanMax;
+    
+    String out; 
+    serializeJson(doc, out);
+    server.send(200, "application/json", out);
+}
+
 static void handleStatus() {
     JsonDocument doc;
     doc["count"]     = _cfg->count;
@@ -474,6 +619,8 @@ void webServerInit(AppConfig* cfg) {
     server.on("/api/config",      HTTP_POST, handlePostConfig);
     server.on("/api/reset-config",HTTP_POST, handleResetConfig);
     server.on("/api/reset-count", HTTP_POST, handleResetCount);
+    server.on("/api/calibrate",   HTTP_POST, handleCalibrate);
+    server.on("/api/calib_data",  HTTP_GET,  handleGetCalibData);
     server.on("/api/status",      HTTP_GET,  handleStatus);
     server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
     server.begin();

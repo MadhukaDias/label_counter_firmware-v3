@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
+#include <ArduinoOTA.h>
 
 #include "config.h"
 #include "display_mgr.h"
@@ -28,6 +29,27 @@ static bool     btnDecLong    = false;
 static bool     vibActive     = false;
 static uint8_t  sewState      = 0;
 static bool     wifiOk        = false;
+
+#include <algorithm> // for std::sort
+// ── Calibration ───────────────────────────────────────────────────────────────
+enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_DONE };
+static CalibState calibState = CALIB_IDLE;
+#define CALIB_SAMPLES 150
+uint32_t calibBuffer[CALIB_SAMPLES];
+static uint16_t calibIdx = 0;
+
+// Exported for Web Server
+bool calibValidBuf[CALIB_SAMPLES] = {false};
+uint32_t calibMedian = 0;
+uint32_t calibSpikeThr = 0;
+uint32_t calibCleanMax = 0;
+bool calibHasData = false;
+
+void startCalibration() {
+    calibState = CALIB_SAMPLING;
+    calibIdx = 0;
+    Serial.println("[CALIB] Started 3-second noise sampling...");
+}
 
 // ── WiFiManager ───────────────────────────────────────────────────────────────
 static void startWiFi() {
@@ -133,6 +155,10 @@ void setup() {
         String ip = WiFi.localIP().toString();
         displayShowCfgIP(ip.c_str());
         Serial.printf("[WEB] Portal: http://%s\n", ip.c_str());
+        
+        // Start OTA listener
+        ArduinoOTA.setHostname(appCfg.deviceId);
+        ArduinoOTA.begin();
     }
 
     Serial.println("[BOOT] Ready.");
@@ -142,6 +168,8 @@ void setup() {
 void loop() {
     uint32_t now = millis();
 
+    if (wifiOk) ArduinoOTA.handle();
+
     // ── IMU at fixed rate ──
     if (now - lastImuMs >= IMU_SAMPLE_MS) {
         lastImuMs = now;
@@ -149,6 +177,58 @@ void loop() {
         bool newVib  = false;
         bool counted = imuUpdate(appCfg.vib, &newVib);
         vibActive    = newVib;
+        uint32_t currentMag = imuGetMagnitude();
+
+        if (calibState == CALIB_SAMPLING) {
+            calibBuffer[calibIdx++] = currentMag;
+            if (calibIdx >= CALIB_SAMPLES) {
+                calibState = CALIB_DONE;
+            }
+        } else if (calibState == CALIB_DONE) {
+            uint32_t sortedBuf[CALIB_SAMPLES];
+            memcpy(sortedBuf, calibBuffer, sizeof(calibBuffer));
+            std::sort(sortedBuf, sortedBuf + CALIB_SAMPLES);
+            uint32_t median = sortedBuf[CALIB_SAMPLES / 4];
+
+            uint32_t spikeThreshold = (median * 2) + 100;
+            bool valid[CALIB_SAMPLES];
+            for (int i = 0; i < CALIB_SAMPLES; i++) valid[i] = true;
+
+            for (int i = 0; i < CALIB_SAMPLES; i++) {
+                if (calibBuffer[i] > spikeThreshold) {
+                    int start = std::max(0, i - 8);
+                    int end = std::min(CALIB_SAMPLES - 1, i + 8);
+                    for (int k = start; k <= end; k++) valid[k] = false;
+                }
+            }
+
+            uint32_t cleanMax = 0;
+            for (int i = 0; i < CALIB_SAMPLES; i++) {
+                if (valid[i] && calibBuffer[i] > cleanMax) {
+                    cleanMax = calibBuffer[i];
+                }
+            }
+
+            if (cleanMax == 0) cleanMax = median; // Fallback
+
+            appCfg.vib.threshold = cleanMax * 3;
+            if (appCfg.vib.threshold < 100) appCfg.vib.threshold = 100;
+            if (appCfg.vib.threshold > 8000) appCfg.vib.threshold = 8000;
+
+            cfgSave(appCfg);
+            
+            // Save results for Web UI
+            memcpy(calibValidBuf, valid, sizeof(valid));
+            calibMedian = median;
+            calibSpikeThr = spikeThreshold;
+            calibCleanMax = cleanMax;
+            calibHasData = true;
+
+            Serial.printf("[CALIB] Done. Median: %lu, SpikeThr: %lu, CleanMax: %lu, NewThr: %lu\n", 
+                          median, spikeThreshold, cleanMax, appCfg.vib.threshold);
+
+            calibState = CALIB_IDLE;
+        }
 
         // NEW: Real-time Serial Plotting
         Serial.print(">Magnitude:");
