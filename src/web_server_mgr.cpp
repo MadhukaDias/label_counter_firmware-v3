@@ -566,15 +566,15 @@ static void handleCalibrate() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
-extern uint32_t calibBuffer[];
-extern bool calibValidBuf[];
+extern uint32_t* calibBuffer;
+extern bool* calibValidBuf;
 extern uint32_t calibMedian;
 extern uint32_t calibSpikeThr;
 extern uint32_t calibCleanMax;
 extern bool calibHasData;
 
 static void handleGetCalibData() {
-    if (!calibHasData) {
+    if (!calibHasData || !calibBuffer || !calibValidBuf) {
         server.send(200, "application/json", "{}");
         return;
     }
@@ -595,6 +595,14 @@ static void handleGetCalibData() {
     String out; 
     serializeJson(doc, out);
     server.send(200, "application/json", out);
+
+    // Free ESP32 RAM once fetched
+    delete[] calibBuffer;
+    calibBuffer = nullptr;
+    delete[] calibValidBuf;
+    calibValidBuf = nullptr;
+    calibHasData = false;
+    Serial.println("[CALIB] Freed 3-second diagnostic memory buffer");
 }
 
 static void handleStatus() {

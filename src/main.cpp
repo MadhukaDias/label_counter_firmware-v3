@@ -35,17 +35,19 @@ static bool     wifiOk        = false;
 enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_DONE };
 static CalibState calibState = CALIB_IDLE;
 #define CALIB_SAMPLES 150
-uint32_t calibBuffer[CALIB_SAMPLES];
 static uint16_t calibIdx = 0;
 
 // Exported for Web Server
-bool calibValidBuf[CALIB_SAMPLES] = {false};
+uint32_t* calibBuffer = nullptr;
+bool* calibValidBuf = nullptr;
 uint32_t calibMedian = 0;
 uint32_t calibSpikeThr = 0;
 uint32_t calibCleanMax = 0;
 bool calibHasData = false;
 
 void startCalibration() {
+    if (!calibBuffer) calibBuffer = new uint32_t[CALIB_SAMPLES];
+    if (!calibValidBuf) calibValidBuf = new bool[CALIB_SAMPLES];
     calibState = CALIB_SAMPLING;
     calibIdx = 0;
     Serial.println("[CALIB] Started 3-second noise sampling...");
@@ -188,7 +190,7 @@ void loop() {
             uint32_t sortedBuf[CALIB_SAMPLES];
             memcpy(sortedBuf, calibBuffer, sizeof(calibBuffer));
             std::sort(sortedBuf, sortedBuf + CALIB_SAMPLES);
-            uint32_t median = sortedBuf[CALIB_SAMPLES / 4];
+            uint32_t median = sortedBuf[CALIB_SAMPLES / 2];
 
             uint32_t spikeThreshold = (median * 2) + 100;
             bool valid[CALIB_SAMPLES];
