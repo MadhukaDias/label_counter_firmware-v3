@@ -8,6 +8,9 @@ struct AppConfig {
     uint32_t  mqttIntervalMs;    // how often to publish (ms)
     bool      mqttEnabled;       // whether MQTT is enabled
     char      deviceId[24];
+    uint32_t  lastCalibMax;
+    uint32_t  lastCalibMin;
+    uint32_t  lastSpikeThr;
 };
 
 void cfgLoad(AppConfig& cfg);

@@ -37,17 +37,11 @@ static CalibState calibState = CALIB_IDLE;
 #define CALIB_SAMPLES 150
 static uint16_t calibIdx = 0;
 
-// Exported for Web Server
+// Local Buffer for calibration
 uint32_t* calibBuffer = nullptr;
-bool* calibValidBuf = nullptr;
-uint32_t calibMedian = 0;
-uint32_t calibSpikeThr = 0;
-uint32_t calibCleanMax = 0;
-bool calibHasData = false;
 
 void startCalibration() {
     if (!calibBuffer) calibBuffer = new uint32_t[CALIB_SAMPLES];
-    if (!calibValidBuf) calibValidBuf = new bool[CALIB_SAMPLES];
     calibState = CALIB_SAMPLING;
     calibIdx = 0;
     Serial.println("[CALIB] Started 3-second noise sampling...");
@@ -188,7 +182,7 @@ void loop() {
             }
         } else if (calibState == CALIB_DONE) {
             uint32_t sortedBuf[CALIB_SAMPLES];
-            memcpy(sortedBuf, calibBuffer, sizeof(calibBuffer));
+            memcpy(sortedBuf, calibBuffer, CALIB_SAMPLES * sizeof(uint32_t));
             std::sort(sortedBuf, sortedBuf + CALIB_SAMPLES);
             uint32_t median = sortedBuf[CALIB_SAMPLES / 2];
 
@@ -205,31 +199,34 @@ void loop() {
             }
 
             uint32_t cleanMax = 0;
+            uint32_t cleanMin = 0xFFFFFFFF;
             for (int i = 0; i < CALIB_SAMPLES; i++) {
-                if (valid[i] && calibBuffer[i] > cleanMax) {
-                    cleanMax = calibBuffer[i];
+                if (valid[i]) {
+                    if (calibBuffer[i] > cleanMax) cleanMax = calibBuffer[i];
+                    if (calibBuffer[i] < cleanMin) cleanMin = calibBuffer[i];
                 }
             }
 
             if (cleanMax == 0) cleanMax = median; // Fallback
+            if (cleanMin == 0xFFFFFFFF) cleanMin = median;
 
             appCfg.vib.threshold = cleanMax * 3;
             if (appCfg.vib.threshold < 100) appCfg.vib.threshold = 100;
             if (appCfg.vib.threshold > 8000) appCfg.vib.threshold = 8000;
 
+            appCfg.lastCalibMax = cleanMax;
+            appCfg.lastCalibMin = cleanMin;
+            appCfg.lastSpikeThr = spikeThreshold;
             cfgSave(appCfg);
-            
-            // Save results for Web UI
-            memcpy(calibValidBuf, valid, sizeof(valid));
-            calibMedian = median;
-            calibSpikeThr = spikeThreshold;
-            calibCleanMax = cleanMax;
-            calibHasData = true;
 
             Serial.printf("[CALIB] Done. Median: %lu, SpikeThr: %lu, CleanMax: %lu, NewThr: %lu\n", 
                           median, spikeThreshold, cleanMax, appCfg.vib.threshold);
 
             calibState = CALIB_IDLE;
+            
+            // Clean up RAM immediately (no graph fetching needed anymore)
+            delete[] calibBuffer;
+            calibBuffer = nullptr;
         }
 
         // NEW: Real-time Serial Plotting
