@@ -140,7 +140,7 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
       <div class="fdesc">
         <span>Minimum 3-axis vibration delta above idle.</span>
         <div style="margin-top:5px; color:var(--acc); font-size:0.85rem;">
-          Stop Thr: <span id="s-sthr">--</span> | cMax: <span id="s-cmax">--</span> | cMin: <span id="s-cmin">--</span> | Spike Thr: <span id="s-spikethr">--</span>
+          Stop Thr: <span id="s-sthr">--</span> | cMax: <span id="s-cmax">--</span> | cMin: <span id="s-cmin">--</span> | Spike Thr: <span id="s-spikethr">--</span> | Lock Peak: <span id="s-lpk">--</span>
         </div>
       </div>
       <div class="srow">
@@ -191,6 +191,30 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
     <button class="bcnt" onclick="resetCount()">&#9744; Reset to Zero</button>
   </div>
 </main>
+
+  <!-- Calibration Modal -->
+  <div id="calib-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center;">
+    <div style="background:var(--bg); border:1px solid var(--border); padding:20px; border-radius:8px; width:90%; max-width:400px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+      <h3 style="margin-top:0; color:var(--acc);">System Calibration</h3>
+      <div id="calib-step-1" style="margin:15px 0;">
+        <div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">Step 1: Noise Profiling</div>
+        <div style="color:var(--dim); font-size:0.9rem;">Please do not touch the machine for 3 seconds...</div>
+        <div style="margin-top:10px; width:100%; height:8px; background:var(--panel); border-radius:4px; overflow:hidden;">
+          <div id="calib-progress" style="width:0%; height:100%; background:var(--acc); transition:width 0.3s;"></div>
+        </div>
+      </div>
+      <div id="calib-step-2" style="margin:15px 0; display:none;">
+        <div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">Step 2: Solenoid Detection</div>
+        <div style="color:var(--dim); font-size:0.9rem; margin-bottom:10px;">Please actuate the lock solenoid manually.</div>
+        <div style="font-size:1.5rem; font-family:var(--mono); color:var(--acc);">
+          <span id="calib-locks">0</span> / 3
+        </div>
+      </div>
+      <div id="calib-step-3" style="margin:15px 0; display:none; color:#00e5a0; font-weight:bold; font-size:1.1rem;">
+        Calibration Complete!
+      </div>
+    </div>
+  </div>
 
 <div id="toast"></div>
 
@@ -341,11 +365,13 @@ async function loadConfig() {
     document.getElementById('s-cmax').textContent = d.lastCalibMax;
     document.getElementById('s-cmin').textContent = d.lastCalibMin;
     document.getElementById('s-spikethr').textContent = d.lastSpikeThr;
+    document.getElementById('s-lpk').textContent = d.lastLockPeak;
   } catch(e){ console.error(e); }
 }
 
-// ── Poll status ────────────────────────────────────────────────────────────────
-const STATES = ['IDLE','VIBRATING','CONFIRMED','COOLING'];
+  // ── Poll status ────────────────────────────────────────────────────────────────
+  const STATES = ['IDLE', 'VIBRATING', 'SEWING', 'COOLING'];
+  let confirmedUntil = 0;
 async function poll() {
   try {
     const d = await (await fetch('/api/status')).json();
@@ -369,11 +395,12 @@ async function poll() {
             falseCount = 0;
           } else if (foundTrue) {
             falseCount++;
-            if (falseCount > 20) break; // ~6 seconds gap tolerance
+              if (falseCount > 20) break; // ~6 seconds gap tolerance
+            }
           }
+          confirmedUntil = Date.now() + 1000;
         }
-      }
-      drawChart();
+        drawChart();
     }
     if (d.count !== undefined) lastCount = d.count;
 
@@ -384,9 +411,12 @@ async function poll() {
     vEl.textContent = d.mag ?? '--';
     vEl.className   = 'sval' + (d.vibActive ? ' warn' : '');
 
-    const sEl = document.getElementById('ls');
-    sEl.textContent = STATES[d.state] || '--';
-    sEl.className   = 'sval' + (d.state > 0 ? ' warn' : '');
+      let stateText = STATES[d.state] || '--';
+      if (Date.now() < confirmedUntil) stateText = 'CONFIRMED';
+
+      const sEl = document.getElementById('ls');
+      sEl.textContent = stateText;
+      sEl.className = 'sval' + ((d.state > 0 || stateText === 'CONFIRMED') ? ' warn' : '');
 
     const mEl = document.getElementById('lm');
     mEl.textContent = d.mqtt ? 'OK' : 'OFF';
@@ -425,15 +455,56 @@ function toast(msg) {
   setTimeout(()=> t.classList.remove('show'), 2800);
 }
 
+let calibInterval = null;
+let calibTimer = 0;
+
 function autoCalibrate() {
   if (!confirm('Ensure the machine is ON but IDLE (not sewing). Continue?')) return;
-  toast('Calibrating... DO NOT TOUCH machine for 3s');
+  
+  const modal = document.getElementById('calib-modal');
+  const s1 = document.getElementById('calib-step-1');
+  const s2 = document.getElementById('calib-step-2');
+  const s3 = document.getElementById('calib-step-3');
+  const pbar = document.getElementById('calib-progress');
+  const lcnt = document.getElementById('calib-locks');
+  
+  modal.style.display = 'flex';
+  s1.style.display = 'block';
+  s2.style.display = 'none';
+  s3.style.display = 'none';
+  pbar.style.width = '0%';
+  lcnt.textContent = '0';
+  calibTimer = 0;
+  
   fetch('/api/calibrate', { method: 'POST' }).then(() => {
-    setTimeout(() => {
-      loadConfig();
-      loadCalibData();
-      toast('Calibration complete! Threshold saved.');
-    }, 3500);
+    if (calibInterval) clearInterval(calibInterval);
+    
+    calibInterval = setInterval(async () => {
+      try {
+        const r = await fetch('/api/calib_status');
+        const d = await r.json();
+        
+        // d.state: 0=IDLE, 1=SAMPLING, 2=NOISE_DONE, 3=LOCK_WAITING
+        if (d.state === 1 || d.state === 2) {
+          calibTimer += 300;
+          pbar.style.width = Math.min(100, (calibTimer / 3000) * 100) + '%';
+        } else if (d.state === 3) {
+          s1.style.display = 'none';
+          s2.style.display = 'block';
+          lcnt.textContent = d.lockCount;
+        } else if (d.state === 0 && calibTimer > 0) {
+          // Finished
+          clearInterval(calibInterval);
+          s2.style.display = 'none';
+          s3.style.display = 'block';
+          loadConfig();
+          setTimeout(() => {
+            modal.style.display = 'none';
+            toast('Calibration complete!');
+          }, 1500);
+        }
+      } catch(e) {}
+    }, 300);
   });
 }
 
@@ -476,6 +547,7 @@ static void handleGetConfig() {
     doc["lastCalibMax"] = _cfg->lastCalibMax;
     doc["lastCalibMin"] = _cfg->lastCalibMin;
     doc["lastSpikeThr"] = _cfg->lastSpikeThr;
+    doc["lastLockPeak"] = _cfg->lastLockPeak;
     
     doc["tempStop"]     = _cfg->vib.stopThreshold;
     
@@ -527,6 +599,17 @@ static void handleCalibrate() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+extern void getCalibStatus(int& state, int& lockCount);
+static void handleCalibStatus() {
+    int state, lockCount;
+    getCalibStatus(state, lockCount);
+    JsonDocument doc;
+    doc["state"] = state;
+    doc["lockCount"] = lockCount;
+    String out; serializeJson(doc, out);
+    server.send(200, "application/json", out);
+}
+
 static void handleStatus() {
     JsonDocument doc;
     doc["count"]     = _cfg->count;
@@ -550,6 +633,7 @@ void webServerInit(AppConfig* cfg) {
     server.on("/api/reset-config",HTTP_POST, handleResetConfig);
     server.on("/api/reset-count", HTTP_POST, handleResetCount);
     server.on("/api/calibrate",   HTTP_POST, handleCalibrate);
+    server.on("/api/calib_status",HTTP_GET,  handleCalibStatus);
     server.on("/api/status",      HTTP_GET,  handleStatus);
     server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
     server.begin();

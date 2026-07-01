@@ -32,8 +32,13 @@ static bool     wifiOk        = false;
 
 #include <algorithm> // for std::sort
 // ── Calibration ───────────────────────────────────────────────────────────────
-enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_DONE };
+enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING };
 static CalibState calibState = CALIB_IDLE;
+static uint8_t calibLockCount = 0;
+static uint32_t calibLockPeaks[3] = {0, 0, 0};
+static uint32_t calibCurrentLockPeak = 0;
+static uint32_t calibLastLockEventMs = 0;
+static bool calibInLockEvent = false;
 #define CALIB_SAMPLES 150
 static uint16_t calibIdx = 0;
 
@@ -44,7 +49,17 @@ void startCalibration() {
     if (!calibBuffer) calibBuffer = new uint32_t[CALIB_SAMPLES];
     calibState = CALIB_SAMPLING;
     calibIdx = 0;
-    Serial.println("[CALIB] Started 3-second noise sampling...");
+    calibLockCount = 0;
+    calibLockPeaks[0] = 0; calibLockPeaks[1] = 0; calibLockPeaks[2] = 0;
+    calibCurrentLockPeak = 0;
+    calibLastLockEventMs = 0;
+    calibInLockEvent = false;
+    Serial.println("[CALIB] Phase 1: Started 3-second noise sampling...");
+}
+
+void getCalibStatus(int& state, int& lockCount) {
+    state = (int)calibState;
+    lockCount = calibLockCount;
 }
 
 // ── WiFiManager ───────────────────────────────────────────────────────────────
@@ -178,9 +193,9 @@ void loop() {
         if (calibState == CALIB_SAMPLING) {
             calibBuffer[calibIdx++] = currentMag;
             if (calibIdx >= CALIB_SAMPLES) {
-                calibState = CALIB_DONE;
+                calibState = CALIB_NOISE_DONE;
             }
-        } else if (calibState == CALIB_DONE) {
+        } else if (calibState == CALIB_NOISE_DONE) {
             uint32_t sortedBuf[CALIB_SAMPLES];
             memcpy(sortedBuf, calibBuffer, CALIB_SAMPLES * sizeof(uint32_t));
             std::sort(sortedBuf, sortedBuf + CALIB_SAMPLES);
@@ -237,14 +252,47 @@ void loop() {
             
             cfgSave(appCfg);
 
-            Serial.printf("[CALIB] Done. Median: %lu, SpikeThr: %lu, CleanMax: %lu, NewThr: %lu\n", 
+            Serial.printf("[CALIB] Phase 1 Done. Median: %lu, SpikeThr: %lu, CleanMax: %lu, NewThr: %lu\n", 
                           median, spikeThreshold, cleanMax, appCfg.vib.threshold);
 
-            calibState = CALIB_IDLE;
+            // Transition to Phase 2
+            calibState = CALIB_LOCK_WAITING;
             
-            // Clean up RAM immediately (no graph fetching needed anymore)
+            // Clean up RAM immediately
             delete[] calibBuffer;
             calibBuffer = nullptr;
+            Serial.println("[CALIB] Phase 2: Waiting for 3 solenoid actuations...");
+        } else if (calibState == CALIB_LOCK_WAITING) {
+            uint32_t lockTrigger = appCfg.vib.threshold * 7;
+            
+            // Only start a new event if 2.5s cooldown has passed OR we are already IN an event tracking it
+            if (currentMag > lockTrigger && (calibInLockEvent || (now - calibLastLockEventMs) >= 2500)) {
+                calibInLockEvent = true;
+                if (currentMag > calibCurrentLockPeak) {
+                    calibCurrentLockPeak = currentMag;
+                }
+            } else if (calibInLockEvent && currentMag < (lockTrigger / 2)) {
+                // Event ended
+                if (calibLockCount < 3) {
+                    calibLockPeaks[calibLockCount] = calibCurrentLockPeak;
+                }
+                calibLockCount++;
+                calibLastLockEventMs = now; // Start cooldown
+                Serial.printf("[CALIB] Solenoid Actuation %d/3 Detected. Peak: %lu (Cooldown started)\n", calibLockCount, calibCurrentLockPeak);
+                
+                calibInLockEvent = false;
+                calibCurrentLockPeak = 0;
+                
+                if (calibLockCount >= 3) {
+                    uint32_t p[3] = {calibLockPeaks[0], calibLockPeaks[1], calibLockPeaks[2]};
+                    std::sort(p, p + 3);
+                    appCfg.lastLockPeak = p[1]; // Median of 3
+                    
+                    cfgSave(appCfg);
+                    Serial.printf("[CALIB] Phase 2 Done. Median Lock Peak: %lu\n", appCfg.lastLockPeak);
+                    calibState = CALIB_IDLE;
+                }
+            }
         }
 
         // NEW: Real-time Serial Plotting

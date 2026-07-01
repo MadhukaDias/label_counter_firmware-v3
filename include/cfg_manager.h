@@ -11,6 +11,7 @@ struct AppConfig {
     uint32_t  lastCalibMax;
     uint32_t  lastCalibMin;
     uint32_t  lastSpikeThr;
+    uint32_t  lastLockPeak;
 };
 
 void cfgLoad(AppConfig& cfg);
