@@ -84,7 +84,7 @@ static void readAxes(int32_t& ax, int32_t& ay, int32_t& az) {
     az = (int32_t)rz * ADXL_MAG_GAIN;
 }
 
-// Rolling average per axis → returns smoothed values
+// Rolling median per axis → prevents single-sample massive spikes from stretching into 160ms pulses
 static void rollingAvgAxes(int32_t ax, int32_t ay, int32_t az,
                             int32_t& avgX, int32_t& avgY, int32_t& avgZ) {
     bufX[rollIdx] = ax;
@@ -92,15 +92,19 @@ static void rollingAvgAxes(int32_t ax, int32_t ay, int32_t az,
     bufZ[rollIdx] = az;
     rollIdx = (rollIdx + 1) % ROLL_AVG_SAMPLES;
 
-    int64_t sx = 0, sy = 0, sz = 0;
+    int32_t sortX[ROLL_AVG_SAMPLES], sortY[ROLL_AVG_SAMPLES], sortZ[ROLL_AVG_SAMPLES];
     for (int i = 0; i < ROLL_AVG_SAMPLES; i++) {
-        sx += bufX[i];
-        sy += bufY[i];
-        sz += bufZ[i];
+        sortX[i] = bufX[i];
+        sortY[i] = bufY[i];
+        sortZ[i] = bufZ[i];
     }
-    avgX = (int32_t)(sx / ROLL_AVG_SAMPLES);
-    avgY = (int32_t)(sy / ROLL_AVG_SAMPLES);
-    avgZ = (int32_t)(sz / ROLL_AVG_SAMPLES);
+    std::sort(sortX, sortX + ROLL_AVG_SAMPLES);
+    std::sort(sortY, sortY + ROLL_AVG_SAMPLES);
+    std::sort(sortZ, sortZ + ROLL_AVG_SAMPLES);
+
+    avgX = sortX[ROLL_AVG_SAMPLES / 2];
+    avgY = sortY[ROLL_AVG_SAMPLES / 2];
+    avgZ = sortZ[ROLL_AVG_SAMPLES / 2];
 }
 
 // 3-axis vibration magnitude = sqrt(dX² + dY² + dZ²)
