@@ -8,6 +8,7 @@ void cfgLoad(AppConfig& cfg) {
     prefs.begin(NVS_NAMESPACE, true);   // read-only
 
     cfg.vib.threshold      = prefs.getInt("threshold",  DEF_VIB_THRESHOLD);
+    cfg.vib.stopThreshold  = prefs.getInt("stopThr",    0);
     cfg.vib.minDurationMs  = prefs.getUInt("minDur",    DEF_MIN_DURATION_MS);
     cfg.vib.silenceMs      = prefs.getUInt("silence",   DEF_SILENCE_MS);
     cfg.mqttIntervalMs     = prefs.getUInt("mqttInt",   DEF_MQTT_INTERVAL_MS);
@@ -45,6 +46,7 @@ void cfgSave(const AppConfig& cfg) {
     prefs.begin(NVS_NAMESPACE, false);
 
     prefs.putInt("threshold", cfg.vib.threshold);
+    prefs.putInt("stopThr",   cfg.vib.stopThreshold);
     prefs.putUInt("minDur",   cfg.vib.minDurationMs);
     prefs.putUInt("silence",  cfg.vib.silenceMs);
     prefs.putUInt("count",    cfg.count);

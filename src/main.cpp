@@ -186,15 +186,28 @@ void loop() {
             std::sort(sortedBuf, sortedBuf + CALIB_SAMPLES);
             uint32_t median = sortedBuf[CALIB_SAMPLES / 2];
 
-            uint32_t spikeThreshold = (median * 2) + 100;
+            uint32_t spikeThreshold = median * 5;
             bool valid[CALIB_SAMPLES];
             for (int i = 0; i < CALIB_SAMPLES; i++) valid[i] = true;
 
-            for (int i = 0; i < CALIB_SAMPLES; i++) {
+            int i = 0;
+            while (i < CALIB_SAMPLES) {
                 if (calibBuffer[i] > spikeThreshold) {
-                    int start = std::max(0, i - 8);
-                    int end = std::min(CALIB_SAMPLES - 1, i + 8);
-                    for (int k = start; k <= end; k++) valid[k] = false;
+                    int eventStart = i;
+                    while (i < CALIB_SAMPLES && calibBuffer[i] > spikeThreshold) {
+                        i++;
+                    }
+                    int eventEnd = i - 1;
+                    int duration = (eventEnd - eventStart) + 1;
+                    
+                    // If spike lasts <= 100ms (7 samples), neglect it
+                    if (duration <= 7) {
+                        for (int k = eventStart; k <= eventEnd; k++) {
+                            valid[k] = false;
+                        }
+                    }
+                } else {
+                    i++;
                 }
             }
 
@@ -217,6 +230,11 @@ void loop() {
             appCfg.lastCalibMax = cleanMax;
             appCfg.lastCalibMin = cleanMin;
             appCfg.lastSpikeThr = spikeThreshold;
+            
+            int32_t stopThr = appCfg.vib.threshold > 100 ? appCfg.vib.threshold - 100 : 0;
+            if (stopThr < (int32_t)cleanMax) stopThr = cleanMax + 50;
+            appCfg.vib.stopThreshold = stopThr;
+            
             cfgSave(appCfg);
 
             Serial.printf("[CALIB] Done. Median: %lu, SpikeThr: %lu, CleanMax: %lu, NewThr: %lu\n", 
@@ -232,8 +250,10 @@ void loop() {
         // NEW: Real-time Serial Plotting
         Serial.print(">Magnitude:");
         Serial.print(imuGetMagnitude());
-        Serial.print(",Threshold:");
+        Serial.print(",TempStart:");
         Serial.print(appCfg.vib.threshold);
+        Serial.print(",TempStop:");
+        Serial.print(appCfg.vib.stopThreshold);
         Serial.print(",Active:");
         Serial.println(newVib ? (appCfg.vib.threshold * 1.2) : 0.0);
 

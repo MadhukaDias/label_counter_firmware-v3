@@ -151,7 +151,12 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
     int32_t mag = vibrMagnitude(ax, ay, az, avgX, avgY, avgZ);
     lastMag = mag;
 
-    bool vibrating = (mag >= cfg.threshold);
+    bool vibrating;
+    if (state == SewState::VIBRATING || state == SewState::CONFIRMED) {
+        vibrating = (mag >= cfg.stopThreshold);
+    } else {
+        vibrating = (mag >= cfg.threshold);
+    }
     uint32_t now   = millis();
     bool counted   = false;
 

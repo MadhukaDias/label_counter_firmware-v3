@@ -123,8 +123,9 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
       <span class="thr-line-lbl" id="thr-lbl">THR: --</span>
     </div>
     <canvas id="chart" height="110"></canvas>
-  </div>
-
+    <div id="live-thr-stats" style="font-size:0.8rem; color:var(--acc); text-align:center; padding-top:8px;">
+      Temp Start: <span id="c-st">--</span> | Temp Stop: <span id="c-sp">--</span>
+    </div>
   </div>
 
   <!-- Threshold params -->
@@ -136,9 +137,11 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
         <button type="button" class="bcnt" style="margin-left:auto; font-size:0.7rem; padding:4px 8px; width:auto; border-color:var(--acc); color:var(--acc);" onclick="autoCalibrate()">Auto-Calibrate</button>
         <span class="funit" style="margin-left:10px;">raw Δ</span>
       </div>
-      <div class="fdesc" style="display:flex; justify-content:space-between; flex-wrap: wrap;">
+      <div class="fdesc">
         <span>Minimum 3-axis vibration delta above idle.</span>
-        <span id="calib-stats" style="color:var(--acc); display:none;">Last Calib - Min: <span id="c-min">--</span> | Max: <span id="c-max">--</span> | Spike Thr: <span id="c-sthr">--</span></span>
+        <div style="margin-top:5px; color:var(--acc); font-size:0.85rem;">
+          Stop Thr: <span id="s-sthr">--</span> | cMax: <span id="s-cmax">--</span> | cMin: <span id="s-cmin">--</span> | Spike Thr: <span id="s-spikethr">--</span>
+        </div>
       </div>
       <div class="srow">
         <input type="range" id="s-thr" min="100" max="8000" step="50">
@@ -234,10 +237,18 @@ function drawChart() {
 
   // Threshold line
   const ty = H - (curThr / maxVal) * H;
-  ctx.strokeStyle = '#ff6b35';
+  ctx.strokeStyle = '#ffaa00';
   ctx.setLineDash([4, 4]);
   ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke();
+  
+  // Stop Threshold line
+  if (typeof curStopThr !== 'undefined') {
+    const sy = H - (curStopThr / maxVal) * H;
+    ctx.strokeStyle = '#00ffff';
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+  }
   ctx.setLineDash([]);
 
   // Fill under curve
@@ -277,13 +288,32 @@ function drawChart() {
 }
 
 // ── Slider ↔ number sync ───────────────────────────────────────────────────────
-[['s-thr','n-thr'],['s-dur','n-dur'],['s-sil','n-sil'],['s-mqi','n-mqi']]
-.forEach(([sid, nid]) => {
-  const s = document.getElementById(sid);
-  const n = document.getElementById(nid);
-  s.addEventListener('input', () => { n.value = s.value; if(sid==='s-thr'){curThr=+s.value;document.getElementById('thr-lbl').textContent='THR: '+s.value;} });
-  n.addEventListener('input', () => { s.value = n.value; if(nid==='n-thr'){curThr=+n.value;document.getElementById('thr-lbl').textContent='THR: '+n.value;} });
-});
+let curStopThr = 0;
+[['s-thr', 'n-thr'], ['s-dur', 'n-dur'], ['s-sil', 'n-sil'], ['s-mqi', 'n-mqi']]
+  .forEach(([sid, nid]) => {
+    const s = document.getElementById(sid);
+    const n = document.getElementById(nid);
+    s.addEventListener('input', () => { 
+      n.value = s.value; 
+      if (sid === 's-thr') { 
+        curThr = +s.value; 
+        curStopThr = Math.max(0, curThr - 100);
+        document.getElementById('thr-lbl').textContent = 'THR: ' + s.value; 
+        document.getElementById('c-st').textContent = curThr;
+        document.getElementById('c-sp').textContent = curStopThr;
+      } 
+    });
+    n.addEventListener('input', () => { 
+      s.value = n.value; 
+      if (nid === 'n-thr') { 
+        curThr = +n.value; 
+        curStopThr = Math.max(0, curThr - 100);
+        document.getElementById('thr-lbl').textContent = 'THR: ' + n.value; 
+        document.getElementById('c-st').textContent = curThr;
+        document.getElementById('c-sp').textContent = curStopThr;
+      } 
+    });
+  });
 
 // ── Load config ────────────────────────────────────────────────────────────────
 async function loadConfig() {
@@ -302,13 +332,15 @@ async function loadConfig() {
     document.getElementById('mqtt-toggle').checked = d.mqttEnabled;
     document.getElementById('did').textContent = 'ID: ' + (d.deviceId || '--');
     curThr = d.threshold;
+    curStopThr = d.tempStop;
     document.getElementById('thr-lbl').textContent = 'THR: ' + curThr;
-    if (d.lastCalibMax > 0 || d.lastCalibMin > 0) {
-      document.getElementById('calib-stats').style.display = 'block';
-      document.getElementById('c-min').textContent = d.lastCalibMin;
-      document.getElementById('c-max').textContent = d.lastCalibMax;
-      document.getElementById('c-sthr').textContent = d.lastSpikeThr || '--';
-    }
+    document.getElementById('c-st').textContent = d.threshold;
+    document.getElementById('c-sp').textContent = d.tempStop;
+    
+    document.getElementById('s-sthr').textContent = d.tempStop;
+    document.getElementById('s-cmax').textContent = d.lastCalibMax;
+    document.getElementById('s-cmin').textContent = d.lastCalibMin;
+    document.getElementById('s-spikethr').textContent = d.lastSpikeThr;
   } catch(e){ console.error(e); }
 }
 
@@ -444,6 +476,9 @@ static void handleGetConfig() {
     doc["lastCalibMax"] = _cfg->lastCalibMax;
     doc["lastCalibMin"] = _cfg->lastCalibMin;
     doc["lastSpikeThr"] = _cfg->lastSpikeThr;
+    
+    doc["tempStop"]     = _cfg->vib.stopThreshold;
+    
     String out; serializeJson(doc, out);
     server.send(200, "application/json", out);
 }
@@ -453,8 +488,12 @@ static void handlePostConfig() {
     JsonDocument doc;
     if (deserializeJson(doc, server.arg("plain"))) { server.send(400, "text/plain", "Bad JSON"); return; }
 
-    if (doc["threshold"].is<int>())
+    if (doc["threshold"].is<int>()) {
         _cfg->vib.threshold     = constrain((int)doc["threshold"], 100, 8000);
+        int32_t stopThr = _cfg->vib.threshold > 100 ? _cfg->vib.threshold - 100 : 0;
+        if (stopThr < (int32_t)_cfg->lastCalibMax) stopThr = _cfg->lastCalibMax + 50;
+        _cfg->vib.stopThreshold = stopThr;
+    }
     if (doc["minDur"].is<int>())
         _cfg->vib.minDurationMs = constrain((int)doc["minDur"], 100, 3000);
     if (doc["silence"].is<int>())
