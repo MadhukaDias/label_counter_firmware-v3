@@ -206,9 +206,10 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
       <div id="calib-step-2" style="margin:15px 0; display:none;">
         <div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">Step 2: Solenoid Detection</div>
         <div style="color:var(--dim); font-size:0.9rem; margin-bottom:10px;">Please actuate the lock solenoid manually.</div>
-        <div style="font-size:1.5rem; font-family:var(--mono); color:var(--acc);">
+        <div style="font-size:1.5rem; font-family:var(--mono); color:var(--acc); margin-bottom:15px;">
           <span id="calib-locks">0</span> / 3
         </div>
+        <button onclick="skipCalibPhase2()" style="padding:6px 12px; background:transparent; border:1px solid var(--dim); color:var(--dim); border-radius:4px; font-size:0.85rem; cursor:pointer;">Skip (No Solenoid)</button>
       </div>
       <div id="calib-step-3" style="margin:15px 0; display:none; color:#00e5a0; font-weight:bold; font-size:1.1rem;">
         Calibration Complete!
@@ -508,6 +509,10 @@ function autoCalibrate() {
   });
 }
 
+function skipCalibPhase2() {
+  fetch('/api/calib_skip', { method: 'POST' });
+}
+
 let isPlotting = true;
 let pollTimer = setInterval(poll, 300);
 
@@ -599,6 +604,12 @@ static void handleCalibrate() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+extern void skipCalibPhase2();
+static void handleCalibSkip() {
+    skipCalibPhase2();
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 extern void getCalibStatus(int& state, int& lockCount);
 static void handleCalibStatus() {
     int state, lockCount;
@@ -633,6 +644,7 @@ void webServerInit(AppConfig* cfg) {
     server.on("/api/reset-config",HTTP_POST, handleResetConfig);
     server.on("/api/reset-count", HTTP_POST, handleResetCount);
     server.on("/api/calibrate",   HTTP_POST, handleCalibrate);
+    server.on("/api/calib_skip",  HTTP_POST, handleCalibSkip);
     server.on("/api/calib_status",HTTP_GET,  handleCalibStatus);
     server.on("/api/status",      HTTP_GET,  handleStatus);
     server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });

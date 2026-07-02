@@ -156,7 +156,7 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
     lastMag = mag;
 
     bool vibrating;
-    if (state == SewState::VIBRATING || state == SewState::CONFIRMED) {
+    if (state == SewState::VIBRATING || state == SewState::CONFIRMED || state == SewState::COOLING) {
         vibrating = (mag >= cfg.stopThreshold);
     } else {
         vibrating = (mag >= cfg.threshold);

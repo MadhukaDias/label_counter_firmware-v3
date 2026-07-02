@@ -62,6 +62,15 @@ void getCalibStatus(int& state, int& lockCount) {
     lockCount = calibLockCount;
 }
 
+void skipCalibPhase2() {
+    if (calibState == CALIB_LOCK_WAITING) {
+        calibState = CALIB_IDLE; // Skip to next (currently IDLE)
+        appCfg.lastLockPeak = 0; // 0 indicates no lock detected/skipped
+        cfgSave(appCfg);
+        Serial.println("[CALIB] Phase 2 Skipped by user.");
+    }
+}
+
 // ── WiFiManager ───────────────────────────────────────────────────────────────
 static void startWiFi() {
     WiFiManager wm;
@@ -246,9 +255,7 @@ void loop() {
             appCfg.lastCalibMin = cleanMin;
             appCfg.lastSpikeThr = spikeThreshold;
             
-            int32_t stopThr = appCfg.vib.threshold > 100 ? appCfg.vib.threshold - 100 : 0;
-            if (stopThr < (int32_t)cleanMax) stopThr = cleanMax + 50;
-            appCfg.vib.stopThreshold = stopThr;
+            appCfg.vib.stopThreshold = (appCfg.vib.threshold + cleanMax) / 2;
             
             cfgSave(appCfg);
 
