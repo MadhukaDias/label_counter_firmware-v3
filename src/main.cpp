@@ -32,7 +32,7 @@ static bool     wifiOk        = false;
 
 #include <algorithm> // for std::sort
 // ── Calibration ───────────────────────────────────────────────────────────────
-enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING };
+enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING, CALIB_SEW_WAITING, CALIB_SEW_DONE };
 static CalibState calibState = CALIB_IDLE;
 static uint8_t calibLockCount = 0;
 static uint32_t calibLockPeaks[3] = {0, 0, 0};
@@ -41,6 +41,11 @@ static uint32_t calibLastLockEventMs = 0;
 static bool calibInLockEvent = false;
 #define CALIB_SAMPLES 150
 static uint16_t calibIdx = 0;
+
+// Phase 3 dynamic buffer
+#define CALIB_SEW_SAMPLES 2000
+static uint32_t* calibSewBuffer = nullptr;
+static uint16_t calibSewIdx = 0;
 
 // Local Buffer for calibration
 uint32_t* calibBuffer = nullptr;
@@ -64,10 +69,14 @@ void getCalibStatus(int& state, int& lockCount) {
 
 void skipCalibPhase2() {
     if (calibState == CALIB_LOCK_WAITING) {
-        calibState = CALIB_IDLE; // Skip to next (currently IDLE)
-        appCfg.lastLockPeak = 0; // 0 indicates no lock detected/skipped
+        calibState = CALIB_SEW_WAITING;
+        appCfg.lastLockPeak = 22000; // Default fallback for spike detection
         cfgSave(appCfg);
-        Serial.println("[CALIB] Phase 2 Skipped by user.");
+        Serial.println("[CALIB] Phase 2 Skipped. Lock peak set to 22000 fallback.");
+        if (calibSewBuffer) delete[] calibSewBuffer;
+        calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
+        calibSewIdx = 0;
+        Serial.println("[CALIB] Phase 3: Waiting for 1 sewing attempt...");
     }
 }
 
@@ -115,11 +124,15 @@ static void handleButtons() {
         Serial.println("[BTN] Long INC → reset");
     }
     if (btnIncLast == LOW && incNow == HIGH && !btnIncLong && (now - btnIncDownMs) >= DEBOUNCE_MS) {
-        appCfg.count++;
-        cfgSaveCount(appCfg.count);
-        // FIX: guard MQTT publish with connection check
-        if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
-        Serial.printf("[BTN] +1 → %lu\n", (unsigned long)appCfg.count);
+        if (calibState == CALIB_SEW_WAITING) {
+            calibState = CALIB_SEW_DONE; // Manual override
+            Serial.println("[CALIB] Phase 3 manual override (INC).");
+        } else {
+            appCfg.count++;
+            cfgSaveCount(appCfg.count);
+            if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
+            Serial.printf("[BTN] +1 → %lu\n", (unsigned long)appCfg.count);
+        }
     }
 
     // ── DEC button ──
@@ -136,11 +149,15 @@ static void handleButtons() {
         Serial.println("[BTN] Long DEC → reset");
     }
     if (btnDecLast == LOW && decNow == HIGH && !btnDecLong && (now - btnDecDownMs) >= DEBOUNCE_MS) {
-        if (appCfg.count > 0) appCfg.count--;
-        cfgSaveCount(appCfg.count);
-        // FIX: guard MQTT publish with connection check
-        if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
-        Serial.printf("[BTN] -1 → %lu\n", (unsigned long)appCfg.count);
+        if (calibState == CALIB_SEW_WAITING) {
+            calibState = CALIB_SEW_DONE; // Manual override
+            Serial.println("[CALIB] Phase 3 manual override (DEC).");
+        } else {
+            if (appCfg.count > 0) appCfg.count--;
+            cfgSaveCount(appCfg.count);
+            if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) mqttPublish(appCfg.count, appCfg.deviceId);
+            Serial.printf("[BTN] -1 → %lu\n", (unsigned long)appCfg.count);
+        }
     }
 
     btnIncLast = incNow;
@@ -297,9 +314,93 @@ void loop() {
                     
                     cfgSave(appCfg);
                     Serial.printf("[CALIB] Phase 2 Done. Median Lock Peak: %lu\n", appCfg.lastLockPeak);
-                    calibState = CALIB_IDLE;
+                    calibState = CALIB_SEW_WAITING;
+                    if (calibSewBuffer) delete[] calibSewBuffer;
+                    calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
+                    calibSewIdx = 0;
+                    Serial.println("[CALIB] Phase 3: Waiting for 1 sewing attempt...");
                 }
             }
+        } else if (calibState == CALIB_SEW_WAITING) {
+            if (calibSewBuffer && calibSewIdx < CALIB_SEW_SAMPLES) {
+                calibSewBuffer[calibSewIdx++] = currentMag;
+            }
+            if (counted) {
+                calibState = CALIB_SEW_DONE;
+                Serial.println("[CALIB] Phase 3 auto cycle finish detected.");
+            }
+        }
+        
+        if (calibState == CALIB_SEW_DONE) {
+            // Processing logic here
+            uint32_t tempStart = appCfg.vib.threshold;
+            uint32_t tempStop = appCfg.vib.stopThreshold;
+            uint32_t cleanMax = tempStop * 2 - tempStart; // derived back since tempStop = (tempStart + cleanMax)/2
+            
+            // 1. Pre-processing: extract valid segments
+            uint32_t* processedBuf = new uint32_t[CALIB_SEW_SAMPLES];
+            uint16_t procIdx = 0;
+            
+            for (uint16_t i = 0; i < calibSewIdx; i++) {
+                uint32_t mag = calibSewBuffer[i];
+                if (mag < tempStop) continue; // Ignore Noise
+                
+                // Identify Spikes (rapid high magnitude > 80% of lastLockPeak)
+                // For simplicity here, if it exceeds appCfg.lastLockPeak * 0.8, it's a spike.
+                if (mag > (appCfg.lastLockPeak * 0.8)) {
+                    if (mag > appCfg.lastLockPeak && appCfg.lastLockPeak != 22000) {
+                        appCfg.lastLockPeak = (appCfg.lastLockPeak + mag) / 2; // Refine Lock Peak
+                    }
+                    continue; // Skip spike
+                }
+                
+                processedBuf[procIdx++] = mag;
+            }
+            
+            if (procIdx > 10) { // Safety check
+                // 2. Middle 50% Extraction
+                uint16_t startIdx = procIdx / 4;
+                uint16_t endIdx = startIdx * 3;
+                uint16_t midLen = endIdx - startIdx;
+                
+                // 3. Minimum Duration Calculation
+                // midLen is half of procIdx. The duration of middle 50% is midLen * 20ms
+                // minDuration = duration / 2
+                appCfg.vib.minDurationMs = (midLen * IMU_SAMPLE_MS) / 2;
+                if (appCfg.vib.minDurationMs < 100) appCfg.vib.minDurationMs = 100; // clamp bottom
+                
+                // 4. Threshold Calculation
+                uint32_t* midBuf = new uint32_t[midLen];
+                for (uint16_t i = 0; i < midLen; i++) midBuf[i] = processedBuf[startIdx + i];
+                std::sort(midBuf, midBuf + midLen);
+                
+                uint32_t middleMedian = midBuf[midLen / 2];
+                uint32_t middleLowest = midBuf[midLen / 10]; // 10th percentile
+                delete[] midBuf;
+                
+                uint32_t newStart = (tempStart + middleMedian) / 2;
+                
+                // 5. Constraint Enforcement
+                if (newStart > middleLowest) {
+                    newStart = (middleLowest + tempStart) / 2;
+                }
+                
+                // 6. Stop Threshold Calculation
+                uint32_t newStop = (newStart + cleanMax) / 2;
+                
+                // 7. Finalize & Save
+                appCfg.vib.threshold = newStart;
+                appCfg.vib.stopThreshold = newStop;
+                cfgSave(appCfg);
+                Serial.printf("[CALIB] Phase 3 Done! StartThr:%lu, StopThr:%lu, MinDur:%lu\n", newStart, newStop, appCfg.vib.minDurationMs);
+            } else {
+                Serial.println("[CALIB] Phase 3 Error: Not enough valid data!");
+            }
+            
+            delete[] processedBuf;
+            if (calibSewBuffer) delete[] calibSewBuffer;
+            calibSewBuffer = nullptr;
+            calibState = CALIB_IDLE;
         }
 
         // NEW: Real-time Serial Plotting

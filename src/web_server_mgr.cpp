@@ -492,7 +492,14 @@ function autoCalibrate() {
         } else if (d.state === 3) {
           s1.style.display = 'none';
           s2.style.display = 'block';
+          s3.style.display = 'none';
           lcnt.textContent = d.lockCount;
+        } else if (d.state === 4) {
+          s1.style.display = 'none';
+          s2.style.display = 'none';
+          s3.style.display = 'block';
+          s3.innerHTML = "Step 3: Sewing Analysis<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>Please sew 1 complete label. Auto-detecting...</span>";
+          s3.style.color = "var(--acc)";
         } else if (d.state === 0 && calibTimer > 0) {
           // Finished
           clearInterval(calibInterval);
