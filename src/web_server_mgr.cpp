@@ -498,7 +498,21 @@ function autoCalibrate() {
           s1.style.display = 'none';
           s2.style.display = 'none';
           s3.style.display = 'block';
-          s3.innerHTML = "Step 3: Sewing Analysis<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>Please sew 1 complete label. Auto-detecting...</span>";
+          if (d.imuState === 3) {
+            s3.innerHTML = "Step 3: Sewing Analysis<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>CONFIRMING...</span>";
+          } else {
+            s3.innerHTML = "Step 3: Sewing Analysis<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>Please sew 1 complete label. Auto-detecting...</span>";
+          }
+          s3.style.color = "var(--acc)";
+        } else if (d.state === 5) {
+          s1.style.display = 'none';
+          s2.style.display = 'none';
+          s3.style.display = 'block';
+          if (d.imuState === 3) {
+            s3.innerHTML = "Step 4: Fine Tuning (" + d.ftCount + "/4)<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>CONFIRMING...</span>";
+          } else {
+            s3.innerHTML = "Step 4: Fine Tuning (" + d.ftCount + "/4)<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>Please sew label " + d.ftCount + " of 4...</span>";
+          }
           s3.style.color = "var(--acc)";
         } else if (d.state === 0 && calibTimer > 0) {
           // Finished
@@ -617,13 +631,15 @@ static void handleCalibSkip() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
-extern void getCalibStatus(int& state, int& lockCount);
+extern void getCalibStatus(int& state, int& lockCount, int& imuState, int& ftCount);
 static void handleCalibStatus() {
-    int state, lockCount;
-    getCalibStatus(state, lockCount);
+    int state, lockCount, imuState, ftCount;
+    getCalibStatus(state, lockCount, imuState, ftCount);
     JsonDocument doc;
     doc["state"] = state;
     doc["lockCount"] = lockCount;
+    doc["imuState"] = imuState;
+    doc["ftCount"] = ftCount;
     String out; serializeJson(doc, out);
     server.send(200, "application/json", out);
 }

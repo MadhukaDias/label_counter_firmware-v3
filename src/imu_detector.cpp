@@ -24,7 +24,10 @@ static uint8_t  rollIdx = 0;
 static int32_t  baseX = 0, baseY = 0, baseZ = 0;
 
 // Exposed for web portal
-static int32_t  lastMag = 0;
+static int32_t  lastMag      = 0;
+
+static uint32_t lastVibStartMs = 0;
+static uint32_t lastVibEndMs   = 0;
 
 // State machine
 static SewState state        = SewState::IDLE;
@@ -172,6 +175,7 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
             if (vibrating) {
                 state        = SewState::VIBRATING;
                 stateEnterMs = now;
+                lastVibStartMs = now;
             }
             break;
 
@@ -189,6 +193,7 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
             if (!vibrating) {
                 state        = SewState::COOLING;
                 stateEnterMs = now;
+                lastVibEndMs = now;
                 if (vibActiveOut) *vibActiveOut = false;
             }
             break;
@@ -197,6 +202,7 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
             if (vibrating) {
                 state        = SewState::CONFIRMED;  // resumed same cycle
                 stateEnterMs = now;
+                lastVibStartMs = now;
             } else if ((now - stateEnterMs) >= cfg.silenceMs) {
                 state   = SewState::IDLE;
                 counted = true;
@@ -209,3 +215,7 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
 }
 
 int32_t imuGetMagnitude() { return lastMag; }
+
+uint32_t imuGetLastVibStart() { return lastVibStartMs; }
+uint32_t imuGetLastVibEnd()   { return lastVibEndMs; }
+int imuGetState() { return (int)state; }

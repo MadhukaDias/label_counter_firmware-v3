@@ -32,7 +32,7 @@ static bool     wifiOk        = false;
 
 #include <algorithm> // for std::sort
 // ── Calibration ───────────────────────────────────────────────────────────────
-enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING, CALIB_SEW_WAITING, CALIB_SEW_DONE };
+enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING, CALIB_SEW_WAITING, CALIB_FINE_TUNE, CALIB_SEW_DONE };
 static CalibState calibState = CALIB_IDLE;
 static uint8_t calibLockCount = 0;
 static uint32_t calibLockPeaks[3] = {0, 0, 0};
@@ -46,6 +46,13 @@ static uint16_t calibIdx = 0;
 #define CALIB_SEW_SAMPLES 2000
 static uint32_t* calibSewBuffer = nullptr;
 static uint16_t calibSewIdx = 0;
+
+// Phase 4 tracking
+static uint32_t* attemptLowestPeaks = nullptr;
+static uint32_t* attemptMedians = nullptr;
+static uint32_t* attemptDurations = nullptr;
+static uint8_t fineTuneCount = 0; // 0 for Phase 3, 1-4 for Phase 4
+static uint32_t prevAttemptEndMs = 0;
 
 // Local Buffer for calibration
 uint32_t* calibBuffer = nullptr;
@@ -62,9 +69,11 @@ void startCalibration() {
     Serial.println("[CALIB] Phase 1: Started 3-second noise sampling...");
 }
 
-void getCalibStatus(int& state, int& lockCount) {
+void getCalibStatus(int& state, int& lockCount, int& imuState, int& ftCount) {
     state = (int)calibState;
     lockCount = calibLockCount;
+    imuState = imuGetState();
+    ftCount = fineTuneCount;
 }
 
 void skipCalibPhase2() {
@@ -76,7 +85,16 @@ void skipCalibPhase2() {
         if (calibSewBuffer) delete[] calibSewBuffer;
         calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
         calibSewIdx = 0;
-        Serial.println("[CALIB] Phase 3: Waiting for 1 sewing attempt...");
+        
+        if (attemptLowestPeaks) delete[] attemptLowestPeaks;
+        if (attemptMedians) delete[] attemptMedians;
+        if (attemptDurations) delete[] attemptDurations;
+        attemptLowestPeaks = new uint32_t[5];
+        attemptMedians = new uint32_t[5];
+        attemptDurations = new uint32_t[5];
+        fineTuneCount = 0;
+        
+        Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
     }
 }
 
@@ -124,9 +142,9 @@ static void handleButtons() {
         Serial.println("[BTN] Long INC → reset");
     }
     if (btnIncLast == LOW && incNow == HIGH && !btnIncLong && (now - btnIncDownMs) >= DEBOUNCE_MS) {
-        if (calibState == CALIB_SEW_WAITING) {
-            calibState = CALIB_SEW_DONE; // Manual override
-            Serial.println("[CALIB] Phase 3 manual override (INC).");
+        if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
+            calibState = CALIB_SEW_DONE; // Manual override/force
+            Serial.println("[CALIB] Phase 3/4 manual force finish (INC).");
         } else {
             appCfg.count++;
             cfgSaveCount(appCfg.count);
@@ -149,8 +167,17 @@ static void handleButtons() {
         Serial.println("[BTN] Long DEC → reset");
     }
     if (btnDecLast == LOW && decNow == HIGH && !btnDecLong && (now - btnDecDownMs) >= DEBOUNCE_MS) {
-        if (calibState == CALIB_SEW_WAITING) {
-            calibState = CALIB_SEW_DONE; // Manual override
+        if (calibState == CALIB_FINE_TUNE && fineTuneCount > 0) {
+            fineTuneCount--;
+            uint32_t start2 = imuGetLastVibStart();
+            uint32_t newSil = (start2 > prevAttemptEndMs) ? (start2 - prevAttemptEndMs) + 250 : 250;
+            if (newSil > 2000) newSil = 2000;
+            appCfg.vib.silenceMs = newSil;
+            cfgSave(appCfg);
+            Serial.printf("[CALIB] Merge Attempts! New silence gap: %lu ms\n", newSil);
+        } else if (calibState == CALIB_SEW_WAITING) {
+            // Can't merge on 1st attempt, do nothing or force
+            calibState = CALIB_SEW_DONE;
             Serial.println("[CALIB] Phase 3 manual override (DEC).");
         } else {
             if (appCfg.count > 0) appCfg.count--;
@@ -318,16 +345,26 @@ void loop() {
                     if (calibSewBuffer) delete[] calibSewBuffer;
                     calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
                     calibSewIdx = 0;
-                    Serial.println("[CALIB] Phase 3: Waiting for 1 sewing attempt...");
+                    
+                    if (attemptLowestPeaks) delete[] attemptLowestPeaks;
+                    if (attemptMedians) delete[] attemptMedians;
+                    if (attemptDurations) delete[] attemptDurations;
+                    attemptLowestPeaks = new uint32_t[5];
+                    attemptMedians = new uint32_t[5];
+                    attemptDurations = new uint32_t[5];
+                    fineTuneCount = 0;
+                    
+                    Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
                 }
             }
-        } else if (calibState == CALIB_SEW_WAITING) {
+        } else if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
             if (calibSewBuffer && calibSewIdx < CALIB_SEW_SAMPLES) {
                 calibSewBuffer[calibSewIdx++] = currentMag;
             }
             if (counted) {
+                prevAttemptEndMs = imuGetLastVibEnd();
                 calibState = CALIB_SEW_DONE;
-                Serial.println("[CALIB] Phase 3 auto cycle finish detected.");
+                Serial.printf("[CALIB] Attempt %d auto finish detected.\n", fineTuneCount + 1);
             }
         }
         
@@ -384,23 +421,75 @@ void loop() {
                 if (newStart > middleLowest) {
                     newStart = (middleLowest + tempStart) / 2;
                 }
-                
-                // 6. Stop Threshold Calculation
                 uint32_t newStop = (newStart + cleanMax) / 2;
                 
-                // 7. Finalize & Save
-                appCfg.vib.threshold = newStart;
-                appCfg.vib.stopThreshold = newStop;
-                cfgSave(appCfg);
-                Serial.printf("[CALIB] Phase 3 Done! StartThr:%lu, StopThr:%lu, MinDur:%lu\n", newStart, newStop, appCfg.vib.minDurationMs);
+                // Store arrays
+                attemptLowestPeaks[fineTuneCount] = middleLowest;
+                attemptMedians[fineTuneCount] = middleMedian;
+                attemptDurations[fineTuneCount] = appCfg.vib.minDurationMs;
+                
+                if (fineTuneCount == 0) {
+                    // Update temp config for next 4 attempts
+                    appCfg.vib.threshold = newStart;
+                    appCfg.vib.stopThreshold = newStop;
+                    cfgSave(appCfg);
+                    Serial.printf("[CALIB] Phase 3 Done! StartThr:%lu, StopThr:%lu, MinDur:%lu\n", newStart, newStop, appCfg.vib.minDurationMs);
+                    
+                    calibState = CALIB_FINE_TUNE;
+                    calibSewIdx = 0; // reset buffer for attempt 2
+                    fineTuneCount++;
+                } else {
+                    fineTuneCount++;
+                    if (fineTuneCount < 5) {
+                        calibState = CALIB_FINE_TUNE;
+                        calibSewIdx = 0;
+                        Serial.printf("[CALIB] Phase 4: Attempt %d done.\n", fineTuneCount);
+                    } else {
+                        // Global Analysis
+                        uint32_t meds[5], lows[5], durs[5];
+                        for(int i=0; i<5; i++) {
+                            meds[i] = attemptMedians[i];
+                            lows[i] = attemptLowestPeaks[i];
+                            durs[i] = attemptDurations[i];
+                        }
+                        std::sort(meds, meds + 5);
+                        std::sort(durs, durs + 5);
+                        
+                        appCfg.vib.toleratingThr = meds[2]; // Median of medians
+                        appCfg.vib.minDurationMs = durs[2]; // Median of durations
+                        
+                        bool thrTooHigh = false;
+                        for(int i=0; i<5; i++) {
+                            if (newStart > lows[i]) { thrTooHigh = true; break; }
+                        }
+                        
+                        if (thrTooHigh) {
+                            int32_t adjusted = ((newStart + appCfg.vib.toleratingThr) / 2) - 200;
+                            if (adjusted < 100) adjusted = 100;
+                            newStart = adjusted;
+                            newStop = (newStart + cleanMax) / 2;
+                        }
+                        
+                        appCfg.vib.threshold = newStart;
+                        appCfg.vib.stopThreshold = newStop;
+                        cfgSave(appCfg);
+                        Serial.printf("[CALIB] FULL CALIBRATION COMPLETE. Final Start:%lu, Final Stop:%lu, MinDur:%lu, TolThr:%ld\n", 
+                                      newStart, newStop, appCfg.vib.minDurationMs, appCfg.vib.toleratingThr);
+                                      
+                        // Cleanup
+                        delete[] attemptLowestPeaks; attemptLowestPeaks = nullptr;
+                        delete[] attemptMedians; attemptMedians = nullptr;
+                        delete[] attemptDurations; attemptDurations = nullptr;
+                        if (calibSewBuffer) { delete[] calibSewBuffer; calibSewBuffer = nullptr; }
+                        calibState = CALIB_IDLE;
+                    }
+                }
             } else {
-                Serial.println("[CALIB] Phase 3 Error: Not enough valid data!");
+                Serial.println("[CALIB] Phase 3/4 Error: Not enough valid data!");
+                if (calibState == CALIB_FINE_TUNE) calibSewIdx = 0; // retry
+                else calibState = CALIB_IDLE; // abort if 1st attempt fails entirely
             }
-            
             delete[] processedBuf;
-            if (calibSewBuffer) delete[] calibSewBuffer;
-            calibSewBuffer = nullptr;
-            calibState = CALIB_IDLE;
         }
 
         // NEW: Real-time Serial Plotting
