@@ -15,3 +15,4 @@ void displayShowRunning(uint32_t count, const char* ip,
                         bool mqttOk, bool vibActive);
 void displayShowError(const char* line1, const char* line2 = nullptr);
 void displayShowCfgIP(const char* ip);   // small overlay: config IP
+void displayShowCalibration(uint8_t state, uint8_t ftCount);

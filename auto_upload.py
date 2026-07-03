@@ -17,7 +17,7 @@ def check_ota():
         return False
 
 print("\n--- Auto Upload Protocol Detector ---")
-if check_ota():
+if not check_ota():
     print(f"[OK] OTA device found at {ota_ip}. Using OTA over Wi-Fi.")
     env.Replace(UPLOAD_PROTOCOL="espota")
     env.Replace(UPLOAD_PORT=ota_ip)

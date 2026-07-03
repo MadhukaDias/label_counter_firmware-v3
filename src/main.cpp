@@ -25,6 +25,8 @@ static uint32_t btnIncDownMs  = 0;
 static uint32_t btnDecDownMs  = 0;
 static bool     btnIncLong    = false;
 static bool     btnDecLong    = false;
+static uint32_t btnBothDownMs = 0;
+static bool     btnBothLong   = false;
 
 static bool     vibActive     = false;
 static uint8_t  sewState      = 0;
@@ -144,6 +146,23 @@ static void handleButtons() {
     uint32_t now = millis();
     bool incNow  = digitalRead(PIN_BTN_INC);
     bool decNow  = digitalRead(PIN_BTN_DEC);
+
+    // ── Dual button ──
+    if (incNow == LOW && decNow == LOW) {
+        if (btnBothDownMs == 0) btnBothDownMs = now;
+        if (!btnBothLong && (now - btnBothDownMs) >= LONG_PRESS_MS) {
+            btnBothLong = true;
+            btnIncLong = true; // Prevent individual triggers on release
+            btnDecLong = true;
+            if (calibState == CALIB_IDLE) {
+                Serial.println("[BTN] Dual Long Press → Start Calibration");
+                startCalibration();
+            }
+        }
+    } else {
+        btnBothDownMs = 0;
+        btnBothLong = false;
+    }
 
     // ── INC button ──
     if (btnIncLast == HIGH && incNow == LOW) {
@@ -567,8 +586,13 @@ void loop() {
     // ── Display at 4 Hz ──
     if (now - lastDisplayMs >= 250) {
         lastDisplayMs = now;
-        String ip = wifiOk ? WiFi.localIP().toString() : "offline";
-        displayShowRunning(appCfg.count, ip.c_str(),
-                           wifiOk && mqttIsConnected(), vibActive);
+        
+        if (calibState != CALIB_IDLE) {
+            displayShowCalibration((uint8_t)calibState, fineTuneCount);
+        } else {
+            String ip = wifiOk ? WiFi.localIP().toString() : "offline";
+            displayShowRunning(appCfg.count, ip.c_str(),
+                               wifiOk && mqttIsConnected(), vibActive);
+        }
     }
 }

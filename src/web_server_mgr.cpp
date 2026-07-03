@@ -378,6 +378,10 @@ async function poll() {
     } else {
         mEl.className = 'sval';
     }
+    
+    if (d.cState > 0 && !calibInterval) {
+        openCalibrationModal();
+    }
   } catch(e){}
 }
 
@@ -409,8 +413,8 @@ function resetCount() {
 let calibInterval = null;
 let calibTimer = 0;
 
-function autoCalibrate() {
-  if (!confirm('Ensure the machine is ON but IDLE (not sewing). Continue?')) return;
+function openCalibrationModal() {
+  if (calibInterval) return;
   
   const modal = document.getElementById('calib-modal');
   const s1 = document.getElementById('calib-step-1');
@@ -427,10 +431,7 @@ function autoCalibrate() {
   lcnt.textContent = '0';
   calibTimer = 0;
   
-  fetch('/api/calibrate', { method: 'POST' }).then(() => {
-    if (calibInterval) clearInterval(calibInterval);
-    
-    calibInterval = setInterval(async () => {
+  calibInterval = setInterval(async () => {
       try {
         const r = await fetch('/api/calib_status');
         const d = await r.json();
@@ -467,6 +468,7 @@ function autoCalibrate() {
         } else if (d.state === 0 && calibTimer > 0) {
           // Finished
           clearInterval(calibInterval);
+          calibInterval = null;
           s2.style.display = 'none';
           s3.style.display = 'block';
           loadConfig();
@@ -477,6 +479,12 @@ function autoCalibrate() {
         }
       } catch(e) {}
     }, 300);
+}
+
+function autoCalibrate() {
+  if (!confirm('Ensure the machine is ON but IDLE (not sewing). Continue?')) return;
+  fetch('/api/calibrate', { method: 'POST' }).then(() => {
+    openCalibrationModal();
   });
 }
 
@@ -488,6 +496,7 @@ function abortCalibrate() {
   if (!confirm('Are you sure you want to cancel calibration?')) return;
   fetch('/api/calib_abort', { method: 'POST' }).then(() => {
     if (calibInterval) clearInterval(calibInterval);
+    calibInterval = null;
     document.getElementById('calib-modal').style.display = 'none';
     loadConfig();
     toast('Calibration canceled');
@@ -615,6 +624,11 @@ static void handleStatus() {
     doc["state"]     = _sewState;
     doc["mqtt"]      = _mqttOk;
     doc["mqttEn"]    = _cfg->mqttEnabled;
+    
+    int cstate, lcnt, imst, ftc;
+    getCalibStatus(cstate, lcnt, imst, ftc);
+    doc["cState"]    = cstate;
+    
     String out; serializeJson(doc, out);
     server.send(200, "application/json", out);
 }

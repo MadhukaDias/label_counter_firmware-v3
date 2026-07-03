@@ -114,3 +114,50 @@ void displayShowCfgIP(const char* ip) {
     oled.print(ip);
     oled.display();
 }
+
+void displayShowCalibration(uint8_t state, uint8_t ftCount) {
+    oled.clearDisplay();
+    oled.setTextSize(1);
+    
+    // Header
+    oled.setCursor(0, 0);
+    oled.println("== CALIBRATION ==");
+    oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
+    
+    oled.setCursor(0, 20);
+    switch (state) {
+        case 1: // CALIB_SAMPLING
+            oled.println("Step 1: Noise Scan");
+            oled.println("Keep machine off.");
+            break;
+        case 3: // CALIB_LOCK_WAITING
+            oled.println("Step 2: Lock Scan");
+            oled.println("Trigger lock stitch");
+            break;
+        case 4: // CALIB_SEW_WAITING
+            oled.println("Step 3: First Sew");
+            oled.println("Sew a normal label");
+            break;
+        case 5: // CALIB_FINE_TUNE
+            oled.println("Step 4: Fine Tune");
+            oled.setCursor(0, 32);
+            oled.print("Attempt ");
+            oled.print(ftCount);
+            oled.println("/4");
+            break;
+        case 6: // CALIB_SEW_DONE
+            oled.println("Processing Data...");
+            break;
+        default:
+            oled.println("Please Wait...");
+            break;
+    }
+    
+    // Footer hint for manual finish
+    if (state == 4 || state == 5) {
+        oled.setCursor(0, 54);
+        oled.print("Press BTN to finish");
+    }
+    
+    oled.display();
+}
