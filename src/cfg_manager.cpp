@@ -18,6 +18,7 @@ void cfgLoad(AppConfig& cfg) {
     cfg.lastCalibMin       = prefs.getUInt("cMin",      0);
     cfg.lastSpikeThr       = prefs.getUInt("cSThr",     0);
     cfg.lastLockPeak       = prefs.getUInt("cLock",     0);
+    cfg.lastCalibStatus    = prefs.getUChar("cStat",    0);
 
     // FIX: sanity-check the stored count. NVS can hold garbage from a first
     // flash or a corrupted write. Any value above MAX_SANE_COUNT is treated as
@@ -60,6 +61,7 @@ void cfgSave(const AppConfig& cfg) {
     prefs.putUInt("cMin",     cfg.lastCalibMin);
     prefs.putUInt("cSThr",    cfg.lastSpikeThr);
     prefs.putUInt("cLock",    cfg.lastLockPeak);
+    prefs.putUChar("cStat",   cfg.lastCalibStatus);
 
     prefs.end();
     Serial.println("[CFG] Saved.");
@@ -69,6 +71,7 @@ void cfgReset(AppConfig& cfg) {
     cfg.vib.threshold     = DEF_VIB_THRESHOLD;
     cfg.vib.minDurationMs = DEF_MIN_DURATION_MS;
     cfg.vib.silenceMs     = DEF_SILENCE_MS;
+    cfg.lastCalibStatus   = 0;
     cfgSave(cfg);
 }
 

@@ -98,6 +98,23 @@ void skipCalibPhase2() {
     }
 }
 
+void abortCalibration() {
+    if (calibState != CALIB_IDLE) {
+        calibState = CALIB_IDLE;
+        appCfg.lastCalibStatus = 2; // CANCELED
+        cfgSave(appCfg);
+        
+        // Cleanup arrays
+        if (attemptLowestPeaks) { delete[] attemptLowestPeaks; attemptLowestPeaks = nullptr; }
+        if (attemptMedians) { delete[] attemptMedians; attemptMedians = nullptr; }
+        if (attemptDurations) { delete[] attemptDurations; attemptDurations = nullptr; }
+        if (calibSewBuffer) { delete[] calibSewBuffer; calibSewBuffer = nullptr; }
+        if (calibBuffer) { delete[] calibBuffer; calibBuffer = nullptr; }
+        
+        Serial.println("[CALIB] Calibration aborted by user.");
+    }
+}
+
 // ── WiFiManager ───────────────────────────────────────────────────────────────
 static void startWiFi() {
     WiFiManager wm;
@@ -472,6 +489,7 @@ void loop() {
                         
                         appCfg.vib.threshold = newStart;
                         appCfg.vib.stopThreshold = newStop;
+                        appCfg.lastCalibStatus = 1; // SUCCESS
                         cfgSave(appCfg);
                         Serial.printf("[CALIB] FULL CALIBRATION COMPLETE. Final Start:%lu, Final Stop:%lu, MinDur:%lu, TolThr:%ld\n", 
                                       newStart, newStop, appCfg.vib.minDurationMs, appCfg.vib.toleratingThr);

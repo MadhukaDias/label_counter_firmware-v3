@@ -12,6 +12,7 @@ struct AppConfig {
     uint32_t  lastCalibMin;
     uint32_t  lastSpikeThr;
     uint32_t  lastLockPeak;
+    uint8_t   lastCalibStatus;   // 0: NONE, 1: SUCCESS, 2: CANCELED
 };
 
 void cfgLoad(AppConfig& cfg);

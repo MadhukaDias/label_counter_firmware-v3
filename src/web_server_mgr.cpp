@@ -43,11 +43,27 @@ main{max-width:680px;margin:0 auto;padding:28px 18px 60px}
 
 /* Stats */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:28px}
-.scard{background:var(--surf);border:1px solid var(--brd);padding:12px 14px;position:relative;overflow:hidden}
+.scard{background:var(--surf);border:1px solid var(--brd);padding:12px 14px;position:relative;overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; min-height:75px;}
 .scard::after{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--acc)}
 .slbl{font-family:var(--mono);font-size:.6rem;color:var(--dim);text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px}
-.sval{font-family:var(--mono);font-size:1.4rem;color:var(--acc)}
+.sval{font-family:var(--mono);font-size:1.15rem;font-weight:bold;color:var(--acc);margin-top:auto}
 .sval.warn{color:var(--acc2)}
+
+#mqtt-card { transition: all 0.15s; }
+#mqtt-card:active { transform: scale(0.96); }
+#mqtt-card.mqtt-on:active { background: rgba(0,229,160,0.15); border-color: var(--acc); }
+#mqtt-card.mqtt-on:hover { border-color: var(--acc); box-shadow: 0 0 8px rgba(0,229,160,0.2); }
+#mqtt-card.mqtt-on .sval { color: var(--acc); }
+#mqtt-card.mqtt-on::after { background: var(--acc); }
+
+#mqtt-card.mqtt-off:active { background: rgba(255,107,53,0.15); border-color: var(--acc2); }
+#mqtt-card.mqtt-off:hover { border-color: var(--acc2); box-shadow: 0 0 8px rgba(255,107,53,0.2); }
+#mqtt-card.mqtt-off .sval { color: var(--acc2); }
+#mqtt-card.mqtt-off::after { background: var(--acc2); }
+
+#count-card { transition: all 0.15s; }
+#count-card:active { transform: scale(0.96); background: rgba(0,229,160,0.15); border-color: var(--acc); }
+#count-card:hover { border-color: var(--acc); box-shadow: 0 0 8px rgba(0,229,160,0.2); }
 
 /* Chart */
 .chart-wrap{background:var(--surf);border:1px solid var(--brd);padding:16px;margin-bottom:28px}
@@ -76,22 +92,33 @@ input[type=number]:focus{border-color:var(--acc)}
 
 .brow{display:flex;gap:10px;margin-top:10px}
 button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border:none;transition:all .2s}
+button:active{transform:scale(0.96) !important;}
+
 .bsave{background:var(--acc);color:#0d0f12;clip-path:polygon(0 0,100% 0,100% 80%,96% 100%,0 100%)}
 .bsave:hover{background:#00ffb3;transform:translateY(-1px)}
+.bsave:active{background:#00cc8e !important;}
+
 .breset{background:transparent;color:var(--acc2);border:1px solid var(--acc2)}
 .breset:hover{background:rgba(255,107,53,.12)}
+.breset:active{background:rgba(255,107,53,.25) !important;}
 
-/* Count control */
-.cctl{background:var(--surf);border:1px solid var(--brd);padding:18px;display:flex;align-items:center;justify-content:space-between;margin-top:8px}
-.cbig{font-family:var(--mono);font-size:2.6rem;color:var(--acc)}
 .bcnt{background:transparent;color:var(--acc2);border:1px solid var(--acc2);padding:10px 18px;font-family:var(--mono);font-size:.78rem;cursor:pointer;text-transform:uppercase;letter-spacing:.1em;transition:all .2s;flex:none}
 .bcnt:hover{background:rgba(255,107,53,.15)}
+.bcnt:active{background:rgba(255,107,53,.3) !important;}
+
+.bcalib{background:transparent;color:var(--acc);border:1px solid var(--acc);padding:14px;width:100%;font-size:1rem;font-family:var(--sans);font-weight:bold;cursor:pointer;text-transform:uppercase;letter-spacing:.1em;transition:all .2s;margin-bottom:10px}
+.bcalib:hover{background:rgba(0,229,160,0.12); box-shadow:0 0 8px rgba(0,229,160,0.2);}
+.bcalib:active{background:rgba(0,229,160,0.25) !important;}
+
+.bdim{background:transparent;color:var(--dim);border:1px solid var(--dim);padding:4px 8px;font-family:var(--mono);font-size:1rem;cursor:pointer;transition:all .2s;border-radius:4px;flex:none}
+.bdim:hover{background:rgba(90,100,117,0.15)}
+.bdim:active{background:rgba(90,100,117,0.3) !important;}
 
 /* Toast */
 #toast{position:fixed;bottom:22px;right:22px;background:var(--acc);color:#0d0f12;font-family:var(--mono);font-size:.78rem;padding:11px 18px;transform:translateY(70px);opacity:0;transition:all .32s cubic-bezier(.23,1,.32,1);font-weight:700;letter-spacing:.05em}
 #toast.show{transform:translateY(0);opacity:1}
 
-@media(max-width:500px){.stats{grid-template-columns:1fr 1fr}}
+@media(max-width:500px){.stats{grid-template-columns:1fr 1fr !important}}
 </style>
 </head>
 <body>
@@ -102,69 +129,24 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
 </header>
 
 <main>
-  <!-- Live stats -->
-  <div class="stats">
-    <div class="scard"><div class="slbl">Count</div><div class="sval" id="lc">--</div></div>
+  <!-- STATE SECTION -->
+  <div class="sec">STATE</div>
+  <div class="stats" style="grid-template-columns: 1fr 1fr 1fr 0.7fr;">
+    <div class="scard" id="count-card" style="cursor:pointer;" onclick="resetCount()">
+      <div class="slbl">Count <span style="font-size:0.5rem;color:var(--dim)">(Tap to reset)</span></div>
+      <div class="sval" id="lc">--</div>
+    </div>
     <div class="scard"><div class="slbl">Vibration</div><div class="sval" id="lv">--</div></div>
     <div class="scard"><div class="slbl">State</div><div class="sval" id="ls">--</div></div>
-    <div class="scard"><div class="slbl">MQTT</div><div class="sval" id="lm">--</div></div>
-  </div>
-
-  <!-- Vibration plot -->
-  <div class="chart-wrap">
-    <div class="chart-hdr">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="chart-title">&#9640; Live Vibration Magnitude</span>
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
-          <input type="checkbox" id="plot-toggle" checked style="accent-color:var(--acc)">
-          <span style="font-family:var(--mono);font-size:0.6rem;color:var(--dim);text-transform:uppercase">Plot Data</span>
-        </label>
-      </div>
-      <span class="thr-line-lbl" id="thr-lbl">THR: --</span>
-    </div>
-    <canvas id="chart" height="110"></canvas>
-    <div id="live-thr-stats" style="font-size:0.8rem; color:var(--acc); text-align:center; padding-top:8px;">
-      Temp Start: <span id="c-st">--</span> | Temp Stop: <span id="c-sp">--</span>
+    <div class="scard mqtt-on" id="mqtt-card" style="cursor:pointer;" onclick="toggleMqtt()">
+      <div class="slbl">MQTT <span style="font-size:0.5rem;color:var(--dim)">(Tap)</span></div>
+      <div class="sval" id="lm">--</div>
     </div>
   </div>
 
-  <!-- Threshold params -->
-  <div class="sec">Vibration Parameters</div>
   <form id="cfg-form">
-    <div class="fg">
-      <div class="fhdr">
-        <span class="fname">Vibration Threshold</span>
-        <button type="button" class="bcnt" style="margin-left:auto; font-size:0.7rem; padding:4px 8px; width:auto; border-color:var(--acc); color:var(--acc);" onclick="autoCalibrate()">Auto-Calibrate</button>
-        <span class="funit" style="margin-left:10px;">raw Δ</span>
-      </div>
-      <div class="fdesc">
-        <span>Minimum 3-axis vibration delta above idle.</span>
-        <div style="margin-top:5px; color:var(--acc); font-size:0.85rem;">
-          Stop Thr: <span id="s-sthr">--</span> | cMax: <span id="s-cmax">--</span> | cMin: <span id="s-cmin">--</span> | Spike Thr: <span id="s-spikethr">--</span> | Lock Peak: <span id="s-lpk">--</span>
-        </div>
-      </div>
-      <div class="srow">
-        <input type="range" id="s-thr" min="100" max="8000" step="50">
-        <input type="number" id="n-thr" min="100" max="8000" step="50">
-      </div>
-    </div>
-    <div class="fg">
-      <div class="fhdr"><span class="fname">Min Sewing Duration</span><span class="funit">ms</span></div>
-      <div class="fdesc">Vibration must persist this long to be confirmed. Prevents false triggers from bumps or table knocks.</div>
-      <div class="srow">
-        <input type="range" id="s-dur" min="100" max="3000" step="50">
-        <input type="number" id="n-dur" min="100" max="3000" step="50">
-      </div>
-    </div>
-    <div class="fg">
-      <div class="fhdr"><span class="fname">Silence Window</span><span class="funit">ms</span></div>
-      <div class="fdesc">Quiet time after sewing stops before count triggers. Prevents double-counting on a single label.</div>
-      <div class="srow">
-        <input type="range" id="s-sil" min="200" max="5000" step="50">
-        <input type="number" id="n-sil" min="200" max="5000" step="50">
-      </div>
-    </div>
-    <div class="fg">
+    <!-- MQTT Interval -->
+    <div class="fg" style="margin-bottom:28px;">
       <div class="fhdr"><span class="fname">MQTT Publish Interval</span><span class="funit">seconds</span></div>
       <div class="fdesc">How often to push count + status to MQTT broker. A count event always publishes immediately regardless of this interval.</div>
       <div class="srow">
@@ -172,24 +154,53 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
         <input type="number" id="n-mqi" min="5" max="300" step="5">
       </div>
     </div>
-    <div class="fg" style="display:flex;align-items:center;gap:10px;padding:14px 18px">
-      <input type="checkbox" id="mqtt-toggle" style="width:18px;height:18px;accent-color:var(--acc)">
-      <label for="mqtt-toggle" class="fname">Enable MQTT Publishing</label>
+
+    <!-- CALIBRATION SECTION -->
+    <div class="sec">CALIBRATION</div>
+    
+    <!-- Row 1: Thresholds & Min Dur -->
+    <div class="stats" style="margin-bottom: 10px; grid-template-columns: repeat(4, 1fr);">
+      <div class="scard" style="min-height: auto;">
+        <div class="slbl">Start Thr</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
+          <button type="button" class="bdim" onclick="incThr(-50)">-</button>
+          <div class="sval" id="n-thr-disp" style="margin-top:0;">--</div>
+          <button type="button" class="bdim" onclick="incThr(50)">+</button>
+        </div>
+        <input type="hidden" id="n-thr" name="threshold">
+      </div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">Stop Thr</div><div class="sval" id="s-sthr">--</div></div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">Spike Thr</div><div class="sval" id="s-spikethr">--</div></div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">Min Dur(ms)</div><div class="sval" id="n-dur-disp">--</div><input type="hidden" id="n-dur"></div>
     </div>
-    <div class="brow">
+
+    <!-- Row 2: cMax, cMin, Lock Peak -->
+    <div class="stats" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 14px;">
+      <div class="scard" style="min-height: auto;"><div class="slbl">cMax</div><div class="sval" id="s-cmax">--</div></div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">cMin</div><div class="sval" id="s-cmin">--</div></div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">Lock Peak</div><div class="sval" id="s-lpk">--</div></div>
+    </div>
+
+    <!-- Silence Window -->
+    <div class="fg" style="margin-bottom:28px;">
+      <div class="fhdr"><span class="fname">Silence Window</span><span class="funit">ms</span></div>
+      <div class="fdesc">Quiet time after sewing stops before count triggers. Prevents double-counting on a single label.</div>
+      <div class="srow">
+        <input type="range" id="s-sil" min="200" max="5000" step="50">
+        <input type="number" id="n-sil" min="200" max="5000" step="50">
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <button type="button" class="bcalib" onclick="autoCalibrate()">
+      Start Calibration <span style="font-size:0.75rem; font-weight:normal; color:var(--dim); margin-left:8px;" id="last-calib-lbl">(Last: --)</span>
+    </button>
+    
+    <div class="brow" style="margin-top:0;">
       <button type="submit" class="bsave">&#9654; Save All</button>
       <button type="button" class="breset" onclick="resetDefs()">Reset Defaults</button>
     </div>
   </form>
-
-  <div class="sec" style="margin-top:28px">Count Control</div>
-  <div class="cctl">
-    <div>
-      <div style="font-size:.7rem;color:var(--dim);margin-bottom:3px;font-family:var(--mono)">CURRENT COUNT</div>
-      <div class="cbig" id="cnt-big">--</div>
-    </div>
-    <button class="bcnt" onclick="resetCount()">&#9744; Reset to Zero</button>
-  </div>
 </main>
 
   <!-- Calibration Modal -->
@@ -214,214 +225,105 @@ button{flex:1;padding:13px;font-family:var(--sans);font-size:.82rem;font-weight:
       <div id="calib-step-3" style="margin:15px 0; display:none; color:#00e5a0; font-weight:bold; font-size:1.1rem;">
         Calibration Complete!
       </div>
+      <button onclick="abortCalibrate()" style="margin-top:15px; padding:8px 16px; background:var(--acc2); border:none; color:#fff; border-radius:4px; font-weight:bold; cursor:pointer;">Abort Calibration</button>
     </div>
   </div>
 
 <div id="toast"></div>
 
 <script>
-// ── Chart setup ────────────────────────────────────────────────────────────────
-const canvas = document.getElementById('chart');
-const ctx    = canvas.getContext('2d');
-const W = 640, H = 110;
-canvas.width  = W;
-canvas.height = H;
-
-const HIST   = 80;   // samples to keep
-const magBuf = new Array(HIST).fill(0);
-const actBuf = new Array(HIST).fill(false);
-const pendingBuf = new Array(HIST).fill(false);
-let   curThr = 800;
-let   lastCount = null;
-
-function drawChart() {
-  const maxVal = Math.max(curThr * 1.4, ...magBuf, 100);
-  ctx.clearRect(0, 0, W, H);
-
-  // Grid lines
-  ctx.strokeStyle = '#2a2f38';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = Math.round(H - (i / 4) * H);
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = '#5a6475';
-    ctx.font = '9px Share Tech Mono, monospace';
-    ctx.fillText(Math.round((i / 4) * maxVal), 3, y - 2);
-  }
-
-  // X-axis moving stamps (every sample = 300ms)
-  ctx.beginPath();
-  const step = W / (HIST - 1);
-  for (let i = 0; i < HIST; i++) {
-    const x = i * step;
-    ctx.moveTo(x, H);
-    ctx.lineTo(x, H - 4);
-  }
-  ctx.strokeStyle = '#5a6475';
-  ctx.stroke();
-
-  // Threshold line
-  const ty = H - (curThr / maxVal) * H;
-  ctx.strokeStyle = '#ffaa00';
-  ctx.setLineDash([4, 4]);
-  ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke();
-  
-  // Stop Threshold line
-  if (typeof curStopThr !== 'undefined') {
-    const sy = H - (curStopThr / maxVal) * H;
-    ctx.strokeStyle = '#00ffff';
-    ctx.setLineDash([2, 2]);
-    ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
-  }
-  ctx.setLineDash([]);
-
-  // Fill under curve
-  ctx.beginPath();
-  ctx.moveTo(0, H);
-  for (let i = 0; i < HIST; i++) {
-    const x = i * step;
-    const y = H - (magBuf[i] / maxVal) * H;
-    ctx.lineTo(x, y);
-  }
-  ctx.lineTo(W, H);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(0,229,160,0.08)';
-  ctx.fill();
-
-  // Line segments with state colors
-  ctx.lineWidth   = 2;
-  ctx.lineJoin    = 'round';
-  for (let i = 1; i < HIST; i++) {
-    ctx.beginPath();
-    const x0 = (i - 1) * step;
-    const y0 = H - (magBuf[i - 1] / maxVal) * H;
-    const x1 = i * step;
-    const y1 = H - (magBuf[i] / maxVal) * H;
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.strokeStyle = (actBuf[i] || actBuf[i-1]) ? '#ff6b35' : '#00e5a0';
-    ctx.stroke();
-  }
-
-  // Current value dot
-  const lastY = H - (magBuf[HIST-1] / maxVal) * H;
-  ctx.fillStyle = magBuf[HIST-1] >= curThr ? '#ff6b35' : '#00e5a0';
-  ctx.beginPath();
-  ctx.arc(W - 1, lastY, 4, 0, Math.PI * 2);
-  ctx.fill();
-}
+// ── Chart setup removed for memory optimization ──
 
 // ── Slider ↔ number sync ───────────────────────────────────────────────────────
 let curStopThr = 0;
-[['s-thr', 'n-thr'], ['s-dur', 'n-dur'], ['s-sil', 'n-sil'], ['s-mqi', 'n-mqi']]
+let mqttEnabledState = true;
+[['s-sil', 'n-sil'], ['s-mqi', 'n-mqi']]
   .forEach(([sid, nid]) => {
     const s = document.getElementById(sid);
     const n = document.getElementById(nid);
-    s.addEventListener('input', () => { 
-      n.value = s.value; 
-      if (sid === 's-thr') { 
-        curThr = +s.value; 
-        curStopThr = Math.max(0, curThr - 100);
-        document.getElementById('thr-lbl').textContent = 'THR: ' + s.value; 
-        document.getElementById('c-st').textContent = curThr;
-        document.getElementById('c-sp').textContent = curStopThr;
-      } 
-    });
-    n.addEventListener('input', () => { 
-      s.value = n.value; 
-      if (nid === 'n-thr') { 
-        curThr = +n.value; 
-        curStopThr = Math.max(0, curThr - 100);
-        document.getElementById('thr-lbl').textContent = 'THR: ' + n.value; 
-        document.getElementById('c-st').textContent = curThr;
-        document.getElementById('c-sp').textContent = curStopThr;
-      } 
-    });
+    if (!s || !n) return;
+    s.addEventListener('input', () => { n.value = s.value; });
+    n.addEventListener('input', () => { s.value = n.value; });
   });
+
+async function toggleMqtt() {
+  await fetch('/api/mqtt_toggle', {method: 'POST'});
+  toast('MQTT toggled');
+  // UI updates next poll
+}
+
+function incThr(val) {
+  const n = document.getElementById('n-thr');
+  const d = document.getElementById('n-thr-disp');
+  let v = parseInt(n.value) || 0;
+  v += val;
+  if(v < 100) v = 100;
+  if(v > 8000) v = 8000;
+  n.value = v;
+  d.textContent = v;
+}
 
 // ── Load config ────────────────────────────────────────────────────────────────
 async function loadConfig() {
   try {
     const d = await (await fetch('/api/config')).json();
-    document.getElementById('s-thr').value = d.threshold;
     document.getElementById('n-thr').value = d.threshold;
-    document.getElementById('s-dur').value = d.minDur;
+    document.getElementById('n-thr-disp').textContent = d.threshold;
     document.getElementById('n-dur').value = d.minDur;
-    document.getElementById('s-sil').value = d.silence;
+    document.getElementById('n-dur-disp').textContent = d.minDur;
+    
+    if(document.getElementById('s-sil')) document.getElementById('s-sil').value = d.silence;
     document.getElementById('n-sil').value = d.silence;
-    // mqttInterval stored in seconds in UI, ms on device
+    
     const mqtts = Math.round(d.mqttInterval / 1000);
-    document.getElementById('s-mqi').value = mqtts;
+    if(document.getElementById('s-mqi')) document.getElementById('s-mqi').value = mqtts;
     document.getElementById('n-mqi').value = mqtts;
-    document.getElementById('mqtt-toggle').checked = d.mqttEnabled;
+    
+    mqttEnabledState = d.mqttEnabled;
+    document.getElementById('lm').textContent = mqttEnabledState ? 'ON' : 'OFF';
     document.getElementById('did').textContent = 'ID: ' + (d.deviceId || '--');
-    curThr = d.threshold;
-    curStopThr = d.tempStop;
-    document.getElementById('thr-lbl').textContent = 'THR: ' + curThr;
-    document.getElementById('c-st').textContent = d.threshold;
-    document.getElementById('c-sp').textContent = d.tempStop;
     
     document.getElementById('s-sthr').textContent = d.tempStop;
     document.getElementById('s-cmax').textContent = d.lastCalibMax;
     document.getElementById('s-cmin').textContent = d.lastCalibMin;
     document.getElementById('s-spikethr').textContent = d.lastSpikeThr;
     document.getElementById('s-lpk').textContent = d.lastLockPeak;
+    
+    let lStatus = '--';
+    if(d.cStat === 1) lStatus = 'SUCCESS';
+    else if(d.cStat === 2) lStatus = 'CANCELED';
+    document.getElementById('last-calib-lbl').textContent = '(Last: ' + lStatus + ')';
   } catch(e){ console.error(e); }
 }
 
   // ── Poll status ────────────────────────────────────────────────────────────────
   const STATES = ['IDLE', 'VIBRATING', 'SEWING', 'COOLING'];
-  let confirmedUntil = 0;
 async function poll() {
   try {
     const d = await (await fetch('/api/status')).json();
-    
-    if (isPlotting) {
-      magBuf.shift(); magBuf.push(d.mag || 0);
-      pendingBuf.shift(); pendingBuf.push(d.vibActive || false);
-      actBuf.shift(); actBuf.push(false);
-
-      if (lastCount !== null && d.count !== undefined && d.count > lastCount) {
-        let foundTrue = false;
-        let falseCount = 0;
-        for (let i = HIST - 1; i >= 0; i--) {
-          if (pendingBuf[i]) {
-            actBuf[i] = true;
-            pendingBuf[i] = false;
-            foundTrue = true;
-            for (let j = 1; j <= falseCount; j++) {
-              if (i + j < HIST) actBuf[i + j] = true;
-            }
-            falseCount = 0;
-          } else if (foundTrue) {
-            falseCount++;
-              if (falseCount > 20) break; // ~6 seconds gap tolerance
-            }
-          }
-          confirmedUntil = Date.now() + 1000;
-        }
-        drawChart();
-    }
-    if (d.count !== undefined) lastCount = d.count;
 
     document.getElementById('lc').textContent = d.count ?? '--';
-    document.getElementById('cnt-big').textContent = d.count ?? '--';
 
     const vEl = document.getElementById('lv');
     vEl.textContent = d.mag ?? '--';
     vEl.className   = 'sval' + (d.vibActive ? ' warn' : '');
 
-      let stateText = STATES[d.state] || '--';
-      if (Date.now() < confirmedUntil) stateText = 'CONFIRMED';
-
-      const sEl = document.getElementById('ls');
-      sEl.textContent = stateText;
-      sEl.className = 'sval' + ((d.state > 0 || stateText === 'CONFIRMED') ? ' warn' : '');
+    let stateText = STATES[d.state] || '--';
+    const sEl = document.getElementById('ls');
+    sEl.textContent = stateText;
+    sEl.className = 'sval' + (d.state > 0 ? ' warn' : '');
 
     const mEl = document.getElementById('lm');
-    mEl.textContent = d.mqtt ? 'OK' : 'OFF';
-    mEl.className   = 'sval' + (d.mqtt ? '' : ' warn');
+    const mCard = document.getElementById('mqtt-card');
+    mqttEnabledState = !!d.mqttEn;
+    mEl.textContent = mqttEnabledState ? (d.mqtt ? 'OK' : 'ON') : 'OFF';
+    mCard.className = mqttEnabledState ? 'scard mqtt-on' : 'scard mqtt-off';
+    
+    if (mqttEnabledState && !d.mqtt) {
+        mEl.className = 'sval warn';
+    } else {
+        mEl.className = 'sval';
+    }
   } catch(e){}
 }
 
@@ -433,7 +335,7 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
     minDur:    +document.getElementById('n-dur').value,
     silence:   +document.getElementById('n-sil').value,
     mqttInterval: +document.getElementById('n-mqi').value * 1000,
-    mqttEnabled: document.getElementById('mqtt-toggle').checked
+    mqttEnabled: mqttEnabledState
   };
   const r = await fetch('/api/config', {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -534,14 +436,17 @@ function skipCalibPhase2() {
   fetch('/api/calib_skip', { method: 'POST' });
 }
 
-let isPlotting = true;
-let pollTimer = setInterval(poll, 300);
+function abortCalibrate() {
+  if (!confirm('Are you sure you want to cancel calibration?')) return;
+  fetch('/api/calib_abort', { method: 'POST' }).then(() => {
+    if (calibInterval) clearInterval(calibInterval);
+    document.getElementById('calib-modal').style.display = 'none';
+    loadConfig();
+    toast('Calibration canceled');
+  });
+}
 
-document.getElementById('plot-toggle').addEventListener('change', (e) => {
-  isPlotting = e.target.checked;
-  clearInterval(pollTimer);
-  pollTimer = setInterval(poll, isPlotting ? 300 : 2000);
-});
+let pollTimer = setInterval(poll, 1000);
 
 loadConfig();
 </script>
@@ -574,6 +479,7 @@ static void handleGetConfig() {
     doc["lastCalibMin"] = _cfg->lastCalibMin;
     doc["lastSpikeThr"] = _cfg->lastSpikeThr;
     doc["lastLockPeak"] = _cfg->lastLockPeak;
+    doc["cStat"]        = _cfg->lastCalibStatus;
     
     doc["tempStop"]     = _cfg->vib.stopThreshold;
     
@@ -587,9 +493,12 @@ static void handlePostConfig() {
     if (deserializeJson(doc, server.arg("plain"))) { server.send(400, "text/plain", "Bad JSON"); return; }
 
     if (doc["threshold"].is<int>()) {
-        _cfg->vib.threshold     = constrain((int)doc["threshold"], 100, 8000);
-        int32_t stopThr = _cfg->vib.threshold > 100 ? _cfg->vib.threshold - 100 : 0;
-        if (stopThr < (int32_t)_cfg->lastCalibMax) stopThr = _cfg->lastCalibMax + 50;
+        int newThr = constrain((int)doc["threshold"], 100, 8000);
+        int delta = newThr - _cfg->vib.threshold;
+        _cfg->vib.threshold = newThr;
+        
+        int32_t stopThr = _cfg->vib.stopThreshold + delta;
+        if (stopThr < 0) stopThr = 0;
         _cfg->vib.stopThreshold = stopThr;
     }
     if (doc["minDur"].is<int>())
@@ -631,6 +540,12 @@ static void handleCalibSkip() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+extern void abortCalibration();
+static void handleCalibAbort() {
+    abortCalibration();
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 extern void getCalibStatus(int& state, int& lockCount, int& imuState, int& ftCount);
 static void handleCalibStatus() {
     int state, lockCount, imuState, ftCount;
@@ -651,8 +566,16 @@ static void handleStatus() {
     doc["vibActive"] = _vibActive;
     doc["state"]     = _sewState;
     doc["mqtt"]      = _mqttOk;
+    doc["mqttEn"]    = _cfg->mqttEnabled;
     String out; serializeJson(doc, out);
     server.send(200, "application/json", out);
+}
+
+static void handleMqttToggle() {
+    _cfg->mqttEnabled = !_cfg->mqttEnabled;
+    cfgSave(*_cfg);
+    _updated = true;
+    server.send(200, "application/json", "{\"ok\":true}");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -668,8 +591,10 @@ void webServerInit(AppConfig* cfg) {
     server.on("/api/reset-count", HTTP_POST, handleResetCount);
     server.on("/api/calibrate",   HTTP_POST, handleCalibrate);
     server.on("/api/calib_skip",  HTTP_POST, handleCalibSkip);
+    server.on("/api/calib_abort", HTTP_POST, handleCalibAbort);
     server.on("/api/calib_status",HTTP_GET,  handleCalibStatus);
     server.on("/api/status",      HTTP_GET,  handleStatus);
+    server.on("/api/mqtt_toggle", HTTP_POST, handleMqttToggle);
     server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
     server.begin();
     Serial.println("[WEB] HTTP server started on port 80");
