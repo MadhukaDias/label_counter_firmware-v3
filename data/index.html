@@ -68,7 +68,8 @@ canvas{width:100%!important;display:block;image-rendering:pixelated}
 input[type=range]{flex:1;-webkit-appearance:none;height:4px;background:var(--brd);outline:none}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;background:var(--acc);cursor:pointer;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);transition:transform .15s}
 input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.3)}
-input[type=number]{width:86px;background:var(--bg);border:1px solid var(--brd);color:var(--acc);font-family:var(--mono);font-size:.95rem;padding:5px 9px;text-align:right;outline:none;transition:border-color .2s}
+input[type=number]{width:86px;background:var(--bg);border:1px solid var(--brd);color:var(--acc);font-family:var(--mono);font-size:.95rem;padding:5px 9px;text-align:right;outline:none;transition:border-color .2s;-moz-appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]:focus{border-color:var(--acc)}
 
 .brow{display:flex;gap:10px;margin-top:10px}
@@ -99,6 +100,9 @@ button:active{transform:scale(0.96) !important;}
 #toast{position:fixed;bottom:22px;right:22px;background:var(--acc);color:#0d0f12;font-family:var(--mono);font-size:.78rem;padding:11px 18px;transform:translateY(70px);opacity:0;transition:all .32s cubic-bezier(.23,1,.32,1);font-weight:700;letter-spacing:.05em}
 #toast.show{transform:translateY(0);opacity:1}
 
+button:disabled, input:disabled { opacity: 0.3 !important; cursor: not-allowed !important; filter: grayscale(1); }
+button:disabled:active, input:disabled:active { transform: none !important; background: transparent !important; }
+
 @media(max-width:500px){.stats{grid-template-columns:1fr 1fr !important}}
 </style>
 </head>
@@ -125,14 +129,21 @@ button:active{transform:scale(0.96) !important;}
     </div>
   </div>
 
+  <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+    <button type="button" id="btn-lock" onclick="toggleLock()" class="bdim" style="font-size:0.75rem; border-color:var(--acc2); color:var(--acc2); display:flex; align-items:center; gap:8px;">
+      <svg id="svg-lock" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm6-9V6c0-3.31-2.69-6-6-6S6 2.69 6 6v2c-2.21 0-4 1.79-4 4v10c0 2.21 1.79 4 4 4h12c2.21 0 4-1.79 4-4V12c0-2.21-1.79-4-4-4zM8 6c0-2.21 1.79-4 4-4s4 1.79 4 4v2H8V6z"/></svg> 
+      <span id="lbl-lock">SETTINGS LOCKED</span>
+    </button>
+  </div>
+
   <form id="cfg-form">
     <!-- MQTT Interval -->
     <div class="fg" style="margin-bottom:28px;">
       <div class="fhdr"><span class="fname">MQTT Publish Interval</span><span class="funit">seconds</span></div>
       <div class="fdesc">How often to push count + status to MQTT broker. A count event always publishes immediately regardless of this interval.</div>
       <div class="srow">
-        <input type="range" id="s-mqi" min="5" max="300" step="5">
-        <input type="number" id="n-mqi" min="5" max="300" step="5">
+        <input type="range" id="s-mqi" min="1" max="30" step="1">
+        <input type="number" id="n-mqi" min="1" max="30" step="1" readonly>
       </div>
     </div>
 
@@ -144,9 +155,9 @@ button:active{transform:scale(0.96) !important;}
       <div class="scard" style="min-height: auto;">
         <div class="slbl">Start Thr</div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim" onclick="incThr(-50)">-</button>
+          <button type="button" id="btn-thr-dec" class="bdim" onclick="incThr(-50)" disabled style="opacity:0.3;">-</button>
           <div class="sval" id="n-thr-disp" style="margin-top:0;">--</div>
-          <button type="button" class="bdim" onclick="incThr(50)">+</button>
+          <button type="button" id="btn-thr-inc" class="bdim" onclick="incThr(50)" disabled style="opacity:0.3;">+</button>
         </div>
         <input type="hidden" id="n-thr" name="threshold">
       </div>
@@ -167,8 +178,8 @@ button:active{transform:scale(0.96) !important;}
       <div class="fhdr"><span class="fname">Silence Window</span><span class="funit">ms</span></div>
       <div class="fdesc">Quiet time after sewing stops before count triggers. Prevents double-counting on a single label.</div>
       <div class="srow">
-        <input type="range" id="s-sil" min="200" max="5000" step="50">
-        <input type="number" id="n-sil" min="200" max="5000" step="50">
+        <input type="range" id="s-sil" min="200" max="5000" step="50" disabled style="opacity:0.4;">
+        <input type="number" id="n-sil" min="200" max="5000" step="50" readonly>
       </div>
     </div>
 
@@ -213,11 +224,53 @@ button:active{transform:scale(0.96) !important;}
 <div id="toast"></div>
 
 <script>
-// ── Chart setup removed for memory optimization ──
-
-// ── Slider ↔ number sync ───────────────────────────────────────────────────────
 let curStopThr = 0;
 let mqttEnabledState = true;
+let sysState = 0;
+let isLocked = true;
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function applyLockState() {
+  const dec = document.getElementById('btn-thr-dec');
+  const inc = document.getElementById('btn-thr-inc');
+  const sSil = document.getElementById('s-sil');
+  const nSil = document.getElementById('n-sil');
+  
+  if (dec) { dec.disabled = isLocked; dec.style.opacity = isLocked ? '0.3' : '1'; }
+  if (inc) { inc.disabled = isLocked; inc.style.opacity = isLocked ? '0.3' : '1'; }
+  if (sSil) { sSil.disabled = isLocked; sSil.style.opacity = isLocked ? '0.4' : '1'; }
+  
+  const btnLock = document.getElementById('btn-lock');
+  const lblLock = document.getElementById('lbl-lock');
+  const svgLock = document.getElementById('svg-lock');
+  
+  if (btnLock && lblLock) {
+    if (isLocked) {
+      lblLock.textContent = 'SETTINGS LOCKED';
+      btnLock.style.borderColor = 'var(--acc2)';
+      btnLock.style.color = 'var(--acc2)';
+      if (svgLock) svgLock.innerHTML = '<path d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm6-9V6c0-3.31-2.69-6-6-6S6 2.69 6 6v2c-2.21 0-4 1.79-4 4v10c0 2.21 1.79 4 4 4h12c2.21 0 4-1.79 4-4V12c0-2.21-1.79-4-4-4zM8 6c0-2.21 1.79-4 4-4s4 1.79 4 4v2H8V6z"/>';
+    } else {
+      lblLock.textContent = 'SETTINGS UNLOCKED';
+      btnLock.style.borderColor = 'var(--acc)';
+      btnLock.style.color = 'var(--acc)';
+      if (svgLock) svgLock.innerHTML = '<path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/>';
+    }
+  }
+}
+
+function toggleLock() {
+  isLocked = !isLocked;
+  applyLockState();
+  showToast(isLocked ? 'Controls Locked' : 'Controls Unlocked');
+}
+
 [['s-sil', 'n-sil'], ['s-mqi', 'n-mqi']]
   .forEach(([sid, nid]) => {
     const s = document.getElementById(sid);
@@ -229,8 +282,7 @@ let mqttEnabledState = true;
 
 async function toggleMqtt() {
   await fetch('/api/mqtt_toggle', {method: 'POST'});
-  toast('MQTT toggled');
-  // UI updates next poll
+  showToast('MQTT toggled');
 }
 
 function incThr(val) {
@@ -274,6 +326,8 @@ async function loadConfig() {
     if(d.cStat === 1) lStatus = 'SUCCESS';
     else if(d.cStat === 2) lStatus = 'CANCELED';
     document.getElementById('last-calib-lbl').textContent = '(Last: ' + lStatus + ')';
+
+    applyLockState();
   } catch(e){ console.error(e); }
 }
 
@@ -322,21 +376,15 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(body)
   });
-  toast(r.ok ? 'Configuration saved' : 'Save failed');
+  showToast(r.ok ? 'Configuration saved' : 'Save failed');
 });
 
 function resetDefs() {
-  fetch('/api/reset-config',{method:'POST'}).then(()=>{ loadConfig(); toast('Defaults restored'); });
+  fetch('/api/reset-config',{method:'POST'}).then(()=>{ loadConfig(); showToast('Defaults restored'); });
 }
 function resetCount() {
   if (!confirm('Reset count to zero?')) return;
-  fetch('/api/reset-count',{method:'POST'}).then(()=> toast('Count reset'));
-}
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = '✓ ' + msg;
-  t.classList.add('show');
-  setTimeout(()=> t.classList.remove('show'), 2800);
+  fetch('/api/reset-count',{method:'POST'}).then(()=> showToast('Count reset'));
 }
 
 let calibInterval = null;
@@ -427,9 +475,10 @@ function abortCalibrate() {
   });
 }
 
-let pollTimer = setInterval(poll, 1000);
-
+applyLockState();
 loadConfig();
+poll();
+setInterval(poll, 1000);
 </script>
 </body>
 </html>
