@@ -32,14 +32,31 @@ A high-performance, dual-core IoT firmware for the ESP32-S3 designed to accurate
 * **Manual Decrement (-):** Tap the `DEC` button to subtract 1.
 * **Reset Count:** Press and hold either the `INC` or `DEC` button for **2 seconds** until the OLED confirms the reset.
 
-### 2. Auto-Calibration Workflow
-Because different sewing machines vibrate differently, the device must be calibrated. Calibration can be triggered via the Web UI or physically by holding **both buttons simultaneously for 2 seconds**.
+### 2. Auto-Calibration Workflow & Mathematics
+Because different sewing machines vibrate differently, the device dynamically calculates specific trigger thresholds using statistical analysis. Calibration can be triggered via the Web UI or physically by holding **both buttons simultaneously for 2 seconds**.
 
 The Calibration follows 4 strict phases:
-* **Phase 1 (Noise Scan):** Do not touch the machine for 3 seconds. The device measures ambient floor vibrations to establish an absolute baseline zero.
-* **Phase 2 (Lock Scan):** Manually actuate the lock-stitch solenoid 3 times. The firmware learns the specific spike signature of the lock stitch. *(Note: If "Lock Solenoid" is unchecked in the Web UI, this step is skipped).*
-* **Phase 3 (First Sew):** Sew exactly 1 normal label. The system records the raw magnitude array, extracts the middle 50% (the purest sewing signal), and establishes initial `Start` and `Stop` vibration thresholds.
-* **Phase 4 (Fine Tuning):** Sew 4 more consecutive labels. The system analyzes the variance between these 4 attempts and the initial sew to dial in the perfect "Silence Window" (debounce gap) and finalize the tolerances. 
+
+**Phase 1 (Noise Scan):** Do not touch the machine for 3 seconds. The device polls the IMU at high speeds to record ambient floor vibrations and establishes an absolute baseline zero (the `cleanMax`).
+
+**Phase 2 (Lock Scan):** Manually actuate the lock-stitch solenoid 3 times. The firmware learns the specific spike signature (magnitude) of the lock stitch. Any vibration that matches this isolated spike later is ignored to prevent false-positive label counts. *(Note: If "Lock Solenoid" is unchecked in the Web UI, this step is skipped).*
+
+**Phase 3 (First Sew Math):** You sew exactly 1 normal label. The firmware records an array of magnitude samples from start to finish.
+1. **Middle 50% Extraction:** The firmware slices off the first 25% and last 25% of the array to completely eliminate the noisy start/stop transients of the motor, leaving only the purest "cruising speed" vibration data.
+2. **Minimum Duration (`minDurationMs`):** The duration of this middle 50% chunk is calculated. The system divides this in half to set the absolute minimum time the machine must vibrate to be considered a valid sew.
+3. **Statistical Baselines:** The firmware sorts the middle 50% array and finds two key values:
+   - `middleMedian`: The 50th percentile magnitude (the average cruising vibration).
+   - `middleLowest`: The 10th percentile magnitude (the deepest dip in vibration during a sew).
+4. **Initial Thresholds:** The `Start` threshold is set exactly halfway between the `cleanMax` (floor noise) and the `middleMedian`. 
+   - *Constraint Check:* If this calculated `Start` threshold is higher than `middleLowest`, it is mathematically pulled down to prevent the machine from accidentally thinking the sew stopped during a slight dip in vibration.
+5. **Stop Threshold:** The `Stop` threshold is set exactly halfway between the new `Start` threshold and the `cleanMax` floor.
+
+**Phase 4 (Fine Tuning Math):** You sew 4 more consecutive labels. The firmware repeats the Phase 3 math for every single attempt. 
+1. **Global Variance Analysis:** The system now has 5 total attempts. It collects the 5 medians, 5 lowest dips, and 5 durations.
+2. **Median of Medians:** It sorts these arrays and extracts the absolute middle value (the 3rd array element) to establish a global `toleratingThr` (Tolerating Threshold) and a finalized `minDurationMs`.
+3. **Safety Adjustment:** The firmware loops through the 10th percentile dips of *all 5 attempts*. If the initial `Start` threshold from Phase 3 is found to be higher than *any* of the 5 dips, it mathematically lowers the `Start` threshold to safely accommodate the lowest observed dip minus an extra 200-point safety margin.
+
+This ensures the final parameters are perfectly sculpted to your exact sewing rhythm, accounting for natural human variance across 5 physical attempts!
 
 **Aborting Calibration:** If you mess up a sew, you can hold **both buttons down for 3 seconds** to abort the calibration and restore the last saved settings.
 
