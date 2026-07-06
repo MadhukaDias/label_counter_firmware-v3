@@ -433,6 +433,11 @@ function openCalibrationModal() {
   const pbar = document.getElementById('calib-progress');
   const lcnt = document.getElementById('calib-locks');
   
+  if (typeof mainPollInterval !== 'undefined' && mainPollInterval) {
+    clearInterval(mainPollInterval);
+    mainPollInterval = null;
+  }
+
   modal.style.display = 'flex';
   s1.style.display = 'block';
   s2.style.display = 'none';
@@ -519,6 +524,7 @@ function openCalibrationModal() {
             setTimeout(() => {
               document.getElementById('calib-modal').style.display = 'none';
               toast('Calibration complete!');
+              if (!mainPollInterval) mainPollInterval = setInterval(poll, 1000);
             }, 1500);
           }
         }
@@ -549,13 +555,14 @@ function abortCalibrate() {
     if(b) b.textContent = 'Abort Calibration';
     loadConfig();
     toast('Calibration canceled');
+    if (!mainPollInterval) mainPollInterval = setInterval(poll, 1000);
   });
 }
 
 applyLockState();
 loadConfig();
 poll();
-setInterval(poll, 1000);
+let mainPollInterval = setInterval(poll, 1000);
 </script>
 </body>
 </html>

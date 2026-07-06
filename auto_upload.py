@@ -7,7 +7,18 @@ try:
 except ImportError:
     has_serial = False
 
-ota_ip = env.GetProjectOption("custom_ota_port", "192.168.1.82")
+import os
+
+def load_env():
+    if os.path.exists(".env"):
+        with open(".env", "r") as f:
+            for line in f:
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    os.environ[k.strip()] = v.strip()
+
+load_env()
+ota_ip = os.environ.get("OTA_IP")
 
 def has_usb_serial():
     if not has_serial: return False
@@ -18,6 +29,7 @@ def has_usb_serial():
     return False
 
 def check_ota():
+    if not ota_ip: return False
     try:
         # Check port 80 (Web Server) since it uses TCP and we know it's always running on the device.
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
