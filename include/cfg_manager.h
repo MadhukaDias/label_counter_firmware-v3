@@ -7,6 +7,7 @@ struct AppConfig {
     uint32_t  count;             // persisted count
     uint32_t  mqttIntervalMs;    // how often to publish (ms)
     bool      mqttEnabled;       // whether MQTT is enabled
+    bool      hasLockSolenoid;   // whether the machine has a lock solenoid
     char      deviceId[24];
     uint32_t  lastCalibMax;
     uint32_t  lastCalibMin;

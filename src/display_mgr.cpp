@@ -54,7 +54,7 @@ void displayShowConnecting(const char* ssid) {
 }
 
 void displayShowRunning(uint32_t count, const char* ip,
-                        bool mqttOk, bool vibActive) {
+                        bool mqttEnabled, bool mqttOk, bool vibActive, uint8_t calibStatus) {
     oled.clearDisplay();
 
     // Big count
@@ -70,23 +70,37 @@ void displayShowRunning(uint32_t count, const char* ip,
     // Divider
     oled.drawFastHLine(0, 36, 128, SSD1306_WHITE);
 
-    // Status row
+    // Status row (IP)
     oled.setTextSize(1);
     oled.setCursor(0, 40);
     oled.print(ip ? ip : "No IP");
 
-    // MQTT dot
-    oled.setCursor(100, 40);
-    oled.print(mqttOk ? "MQ:OK" : "MQ:--");
-
-    // Vibration activity bar
-    oled.setCursor(0, 52);
-    oled.print("SEW:");
-    if (vibActive) {
-        oled.fillRect(30, 53, 90, 8, SSD1306_WHITE);
+    // Bottom row layout: CAL | Sewing Bar | MQTT
+    
+    // 1. Calibration state (Left)
+    oled.setCursor(0, 54);
+    if (calibStatus == 1) {
+        oled.print("CAL:OK");
     } else {
-        oled.drawRect(30, 53, 90, 8, SSD1306_WHITE);
+        oled.print("CAL:BAD");
     }
+
+    // 2. Sewing indication bar (Middle)
+    // Reduce width and place in middle (x=48, w=26)
+    if (vibActive) {
+        oled.fillRect(48, 54, 26, 8, SSD1306_WHITE);
+    } else {
+        oled.drawRect(48, 54, 26, 8, SSD1306_WHITE);
+    }
+
+    // 3. MQTT state (Right)
+    oled.setCursor(80, 54);
+    if (!mqttEnabled) {
+        oled.print("MQTT:OFF");
+    } else {
+        oled.print(mqttOk ? "MQTT:OK " : "MQTT:ON ");
+    }
+
     oled.display();
 }
 
@@ -105,6 +119,21 @@ void displayShowError(const char* line1, const char* line2) {
     oled.display();
 }
 
+void displayShowMessage(const char* line1, const char* line2) {
+    oled.clearDisplay();
+    oled.setTextSize(1);
+    oled.setCursor(0, 0);
+    oled.println("== SYSTEM ==");
+    oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
+    oled.setCursor(0, 20);
+    oled.println(line1);
+    if (line2) {
+        oled.setCursor(0, 34);
+        oled.println(line2);
+    }
+    oled.display();
+}
+
 void displayShowCfgIP(const char* ip) {
     // Small info strip at bottom without clearing rest of screen
     oled.fillRect(0, 54, 128, 10, SSD1306_BLACK);
@@ -115,7 +144,7 @@ void displayShowCfgIP(const char* ip) {
     oled.display();
 }
 
-void displayShowCalibration(uint8_t state, uint8_t ftCount) {
+void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress) {
     oled.clearDisplay();
     oled.setTextSize(1);
     
@@ -129,6 +158,17 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount) {
         case 1: // CALIB_SAMPLING
             oled.println("Step 1: Noise Scan");
             oled.println("Keep machine off.");
+            
+            // Draw loading bar with 3 splits (width 120, height 10)
+            oled.drawRect(4, 42, 120, 10, SSD1306_WHITE);
+            oled.drawFastVLine(44, 42, 10, SSD1306_WHITE);
+            oled.drawFastVLine(84, 42, 10, SSD1306_WHITE);
+            
+            if (progress > 0) {
+                int fillW = (progress * 120) / 150; // max samples is 150
+                if (fillW > 120) fillW = 120;
+                oled.fillRect(4, 42, fillW, 10, SSD1306_WHITE);
+            }
             break;
         case 3: // CALIB_LOCK_WAITING
             oled.println("Step 2: Lock Scan");
@@ -147,6 +187,10 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount) {
             break;
         case 6: // CALIB_SEW_DONE
             oled.println("Processing Data...");
+            break;
+        case 7: // CALIB_SKIP_LOCK
+            oled.setCursor(0, 32);
+            oled.println("NO LOCK SOLENOID");
             break;
         default:
             oled.println("Please Wait...");

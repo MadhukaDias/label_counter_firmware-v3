@@ -14,6 +14,7 @@ void cfgLoad(AppConfig& cfg) {
     cfg.vib.silenceMs      = prefs.getUInt("silence",   DEF_SILENCE_MS);
     cfg.mqttIntervalMs     = prefs.getUInt("mqttInt",   DEF_MQTT_INTERVAL_MS);
     cfg.mqttEnabled        = prefs.getBool("mqttEn",    true);
+    cfg.hasLockSolenoid    = prefs.getBool("hasSolen",  true);
     cfg.lastCalibMax       = prefs.getUInt("cMax",      0);
     cfg.lastCalibMin       = prefs.getUInt("cMin",      0);
     cfg.lastSpikeThr       = prefs.getUInt("cSThr",     0);
@@ -56,6 +57,7 @@ void cfgSave(const AppConfig& cfg) {
     prefs.putUInt("count",    cfg.count);
     prefs.putUInt("mqttInt",  cfg.mqttIntervalMs);
     prefs.putBool("mqttEn",   cfg.mqttEnabled);
+    prefs.putBool("hasSolen", cfg.hasLockSolenoid);
     prefs.putString("deviceId", cfg.deviceId);
     prefs.putUInt("cMax",     cfg.lastCalibMax);
     prefs.putUInt("cMin",     cfg.lastCalibMin);
@@ -71,6 +73,7 @@ void cfgReset(AppConfig& cfg) {
     cfg.vib.threshold     = DEF_VIB_THRESHOLD;
     cfg.vib.minDurationMs = DEF_MIN_DURATION_MS;
     cfg.vib.silenceMs     = DEF_SILENCE_MS;
+    cfg.hasLockSolenoid   = true;
     cfg.lastCalibStatus   = 0;
     cfgSave(cfg);
 }

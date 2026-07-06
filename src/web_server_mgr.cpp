@@ -74,7 +74,6 @@ canvas{width:100%!important;display:block;image-rendering:pixelated}
 
 /* Section heading */
 .sec{font-size:.68rem;font-family:var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.2em;margin-bottom:14px;display:flex;align-items:center;gap:10px}
-.sec::after{content:'';flex:1;height:1px;background:var(--brd)}
 
 /* Fields */
 .fg{background:var(--surf);border:1px solid var(--brd);padding:18px;margin-bottom:2px;transition:border-color .2s}
@@ -148,15 +147,8 @@ button:disabled:active, input:disabled:active { transform: none !important; back
     </div>
   </div>
 
-  <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
-    <button type="button" id="btn-lock" onclick="toggleLock()" class="bdim" style="font-size:0.75rem; border-color:var(--acc2); color:var(--acc2); display:flex; align-items:center; gap:8px;">
-      <svg id="svg-lock" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm6-9V6c0-3.31-2.69-6-6-6S6 2.69 6 6v2c-2.21 0-4 1.79-4 4v10c0 2.21 1.79 4 4 4h12c2.21 0 4-1.79 4-4V12c0-2.21-1.79-4-4-4zM8 6c0-2.21 1.79-4 4-4s4 1.79 4 4v2H8V6z"/></svg> 
-      <span id="lbl-lock">SETTINGS LOCKED</span>
-    </button>
-  </div>
-
   <form id="cfg-form">
-    <!-- MQTT Interval -->
+    <!-- MQTT Interval moved to STATE section -->
     <div class="fg" style="margin-bottom:28px;">
       <div class="fhdr"><span class="fname">MQTT Publish Interval</span><span class="funit">seconds</span></div>
       <div class="fdesc">How often to push count + status to MQTT broker. A count event always publishes immediately regardless of this interval.</div>
@@ -167,7 +159,17 @@ button:disabled:active, input:disabled:active { transform: none !important; back
     </div>
 
     <!-- CALIBRATION SECTION -->
-    <div class="sec">CALIBRATION</div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div class="sec" style="margin-bottom:0;">CALIBRATION</div>
+      <button type="button" id="btn-lock" onclick="toggleLock()" class="bdim" style="font-size:0.75rem; border-color:var(--acc2); color:var(--acc2); display:flex; align-items:center; gap:8px;">
+        <svg id="svg-lock" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm6-9V6c0-3.31-2.69-6-6-6S6 2.69 6 6v2c-2.21 0-4 1.79-4 4v10c0 2.21 1.79 4 4 4h12c2.21 0 4-1.79 4-4V12c0-2.21-1.79-4-4-4zM8 6c0-2.21 1.79-4 4-4s4 1.79 4 4v2H8V6z"/></svg> 
+        <span id="lbl-lock">SETTINGS LOCKED</span>
+      </button>
+    </div>
+    <div style="margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+      <input type="checkbox" id="cb-solenoid" style="width:16px; height:16px; cursor:pointer; accent-color:var(--acc);" disabled>
+      <label for="cb-solenoid" style="font-family:var(--sans); font-size:0.9rem; font-weight:600; cursor:pointer;">Lock Solenoid</label>
+    </div>
     
     <!-- Row 1: Thresholds & Min Dur -->
     <div class="stats" style="margin-bottom: 10px; grid-template-columns: repeat(4, 1fr);">
@@ -236,7 +238,7 @@ button:disabled:active, input:disabled:active { transform: none !important; back
       <div id="calib-step-3" style="margin:15px 0; display:none; color:#00e5a0; font-weight:bold; font-size:1.1rem;">
         Calibration Complete!
       </div>
-      <button onclick="abortCalibrate()" style="margin-top:15px; padding:8px 16px; background:var(--acc2); border:none; color:#fff; border-radius:4px; font-weight:bold; cursor:pointer;">Abort Calibration</button>
+      <button id="btn-abort" onclick="abortCalibrate()" style="margin-top:15px; padding:8px 16px; background:var(--acc2); border:none; color:#fff; border-radius:4px; font-weight:bold; cursor:pointer;">Abort Calibration</button>
     </div>
   </div>
 
@@ -264,6 +266,9 @@ function applyLockState() {
   if (dec) { dec.disabled = isLocked; dec.style.opacity = isLocked ? '0.3' : '1'; }
   if (inc) { inc.disabled = isLocked; inc.style.opacity = isLocked ? '0.3' : '1'; }
   if (sSil) { sSil.disabled = isLocked; sSil.style.opacity = isLocked ? '0.4' : '1'; }
+  
+  const cSol = document.getElementById('cb-solenoid');
+  if (cSol) { cSol.disabled = isLocked; cSol.style.opacity = isLocked ? '0.5' : '1'; }
   
   const btnLock = document.getElementById('btn-lock');
   const lblLock = document.getElementById('lbl-lock');
@@ -331,6 +336,10 @@ async function loadConfig() {
     if(document.getElementById('s-mqi')) document.getElementById('s-mqi').value = mqtts;
     document.getElementById('n-mqi').value = mqtts;
     
+    if(document.getElementById('cb-solenoid')) {
+        document.getElementById('cb-solenoid').checked = d.hasSolenoid;
+    }
+    
     mqttEnabledState = d.mqttEnabled;
     document.getElementById('lm').textContent = mqttEnabledState ? 'ON' : 'OFF';
     document.getElementById('did').textContent = 'ID: ' + (d.deviceId || '--');
@@ -393,7 +402,8 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
     minDur:    +document.getElementById('n-dur').value,
     silence:   +document.getElementById('n-sil').value,
     mqttInterval: +document.getElementById('n-mqi').value * 1000,
-    mqttEnabled: mqttEnabledState
+    mqttEnabled: mqttEnabledState,
+    hasSolenoid: document.getElementById('cb-solenoid') ? document.getElementById('cb-solenoid').checked : true
   };
   const r = await fetch('/api/config', {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -445,6 +455,34 @@ function openCalibrationModal() {
           s2.style.display = 'block';
           s3.style.display = 'none';
           lcnt.textContent = d.lockCount;
+          
+          const s2HTML = document.getElementById('calib-step-2');
+          const skipBtn = s2HTML.querySelector('button');
+          if (skipBtn) skipBtn.style.display = 'inline-block';
+          
+          s2HTML.querySelector('div:nth-child(1)').textContent = 'Step 2: Solenoid Detection';
+          s2HTML.querySelector('div:nth-child(1)').style.color = '';
+          s2HTML.querySelector('div:nth-child(2)').textContent = 'Please actuate the lock solenoid manually.';
+          s2HTML.querySelector('div:nth-child(2)').style.color = 'var(--dim)';
+          s2HTML.querySelector('div:nth-child(2)').style.fontWeight = 'normal';
+          s2HTML.querySelector('div:nth-child(3)').style.display = 'block';
+          
+        } else if (d.state === 7) {
+          s1.style.display = 'none';
+          s2.style.display = 'block';
+          s3.style.display = 'none';
+          
+          const s2HTML = document.getElementById('calib-step-2');
+          const skipBtn = s2HTML.querySelector('button');
+          if (skipBtn) skipBtn.style.display = 'none';
+          
+          s2HTML.querySelector('div:nth-child(1)').textContent = 'NO LOCK SOLENOID';
+          s2HTML.querySelector('div:nth-child(1)').style.color = 'var(--acc2)';
+          s2HTML.querySelector('div:nth-child(2)').textContent = 'Skipping to Step 3...';
+          s2HTML.querySelector('div:nth-child(2)').style.color = 'var(--dim)';
+          s2HTML.querySelector('div:nth-child(2)').style.fontWeight = 'normal';
+          s2HTML.querySelector('div:nth-child(3)').style.display = 'none';
+          
         } else if (d.state === 4) {
           s1.style.display = 'none';
           s2.style.display = 'none';
@@ -466,16 +504,23 @@ function openCalibrationModal() {
           }
           s3.style.color = "var(--acc)";
         } else if (d.state === 0 && calibTimer > 0) {
-          // Finished
+          // Finished or Aborted
           clearInterval(calibInterval);
           calibInterval = null;
-          s2.style.display = 'none';
-          s3.style.display = 'block';
-          loadConfig();
-          setTimeout(() => {
-            modal.style.display = 'none';
-            toast('Calibration complete!');
-          }, 1500);
+          if (d.cStat === 2) {
+            document.getElementById('calib-modal').style.display = 'none';
+            loadConfig();
+            toast('Calibration aborted');
+          } else {
+            s2.style.display = 'none';
+            s3.style.display = 'block';
+            s3.innerHTML = "Processing Data...<br><span style='font-size:0.9rem; color:var(--acc); font-weight:bold;'>SUCCESS!</span>";
+            loadConfig();
+            setTimeout(() => {
+              document.getElementById('calib-modal').style.display = 'none';
+              toast('Calibration complete!');
+            }, 1500);
+          }
         }
       } catch(e) {}
     }, 300);
@@ -494,10 +539,14 @@ function skipCalibPhase2() {
 
 function abortCalibrate() {
   if (!confirm('Are you sure you want to cancel calibration?')) return;
+  const b = document.getElementById('btn-abort');
+  if(b) b.textContent = 'Aborting...';
+  
   fetch('/api/calib_abort', { method: 'POST' }).then(() => {
     if (calibInterval) clearInterval(calibInterval);
     calibInterval = null;
     document.getElementById('calib-modal').style.display = 'none';
+    if(b) b.textContent = 'Abort Calibration';
     loadConfig();
     toast('Calibration canceled');
   });
@@ -530,6 +579,7 @@ static void handleGetConfig() {
     doc["silence"]      = _cfg->vib.silenceMs;
     doc["mqttInterval"] = _cfg->mqttIntervalMs;
     doc["mqttEnabled"]  = _cfg->mqttEnabled;
+    doc["hasSolenoid"]  = _cfg->hasLockSolenoid;
     doc["count"]        = _cfg->count;
     doc["deviceId"]     = _cfg->deviceId;
     doc["lastCalibMax"] = _cfg->lastCalibMax;
@@ -566,6 +616,8 @@ static void handlePostConfig() {
         _cfg->mqttIntervalMs    = constrain((int)doc["mqttInterval"], 5000, 300000);
     if (doc["mqttEnabled"].is<bool>())
         _cfg->mqttEnabled       = doc["mqttEnabled"];
+    if (doc["hasSolenoid"].is<bool>())
+        _cfg->hasLockSolenoid   = doc["hasSolenoid"];
 
     cfgSave(*_cfg);
     _updated = true;
@@ -612,6 +664,7 @@ static void handleCalibStatus() {
     doc["lockCount"] = lockCount;
     doc["imuState"] = imuState;
     doc["ftCount"] = ftCount;
+    doc["cStat"] = _cfg->lastCalibStatus;
     String out; serializeJson(doc, out);
     server.send(200, "application/json", out);
 }

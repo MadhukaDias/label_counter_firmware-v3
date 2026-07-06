@@ -34,7 +34,7 @@ static bool     wifiOk        = false;
 
 #include <algorithm> // for std::sort
 // ── Calibration ───────────────────────────────────────────────────────────────
-enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING, CALIB_SEW_WAITING, CALIB_FINE_TUNE, CALIB_SEW_DONE };
+enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING, CALIB_SEW_WAITING, CALIB_FINE_TUNE, CALIB_SEW_DONE, CALIB_SKIP_LOCK };
 static CalibState calibState = CALIB_IDLE;
 static uint8_t calibLockCount = 0;
 static uint32_t calibLockPeaks[3] = {0, 0, 0};
@@ -79,7 +79,7 @@ void getCalibStatus(int& state, int& lockCount, int& imuState, int& ftCount) {
 }
 
 void skipCalibPhase2() {
-    if (calibState == CALIB_LOCK_WAITING) {
+    if (calibState == CALIB_LOCK_WAITING || calibState == CALIB_SKIP_LOCK) {
         calibState = CALIB_SEW_WAITING;
         appCfg.lastLockPeak = 22000; // Default fallback for spike detection
         cfgSave(appCfg);
@@ -114,6 +114,8 @@ void abortCalibration() {
         if (calibBuffer) { delete[] calibBuffer; calibBuffer = nullptr; }
         
         Serial.println("[CALIB] Calibration aborted by user.");
+        displayShowMessage("Aborting", "Calibration...");
+        lastDisplayMs = millis() + 1000; // Small pause to remain readable
     }
 }
 
@@ -150,13 +152,21 @@ static void handleButtons() {
     // ── Dual button ──
     if (incNow == LOW && decNow == LOW) {
         if (btnBothDownMs == 0) btnBothDownMs = now;
-        if (!btnBothLong && (now - btnBothDownMs) >= LONG_PRESS_MS) {
-            btnBothLong = true;
-            btnIncLong = true; // Prevent individual triggers on release
-            btnDecLong = true;
-            if (calibState == CALIB_IDLE) {
+        if (calibState == CALIB_IDLE) {
+            if (!btnBothLong && (now - btnBothDownMs) >= LONG_PRESS_MS) {
+                btnBothLong = true;
+                btnIncLong = true; // Prevent individual triggers on release
+                btnDecLong = true;
                 Serial.println("[BTN] Dual Long Press → Start Calibration");
                 startCalibration();
+            }
+        } else {
+            if (!btnBothLong && (now - btnBothDownMs) >= 3000) {
+                btnBothLong = true;
+                btnIncLong = true;
+                btnDecLong = true;
+                Serial.println("[BTN] Dual Long Press (3s) → Abort Calibration");
+                abortCalibration();
             }
         }
     } else {
@@ -169,7 +179,7 @@ static void handleButtons() {
         btnIncDownMs = now;
         btnIncLong   = false;
     }
-    if (incNow == LOW && !btnIncLong && (now - btnIncDownMs) >= LONG_PRESS_MS) {
+    if (incNow == LOW && !btnIncLong && (now - btnIncDownMs) >= LONG_PRESS_MS && btnBothDownMs == 0) {
         btnIncLong    = true;
         appCfg.count  = 0;
         cfgSaveCount(0);
@@ -194,7 +204,7 @@ static void handleButtons() {
         btnDecDownMs = now;
         btnDecLong   = false;
     }
-    if (decNow == LOW && !btnDecLong && (now - btnDecDownMs) >= LONG_PRESS_MS) {
+    if (decNow == LOW && !btnDecLong && (now - btnDecDownMs) >= LONG_PRESS_MS && btnBothDownMs == 0) {
         btnDecLong    = true;
         appCfg.count  = 0;
         cfgSaveCount(0);
@@ -343,7 +353,14 @@ void loop() {
                           median, spikeThreshold, cleanMax, appCfg.vib.threshold);
 
             // Transition to Phase 2
-            calibState = CALIB_LOCK_WAITING;
+            if (appCfg.hasLockSolenoid) {
+                calibState = CALIB_LOCK_WAITING;
+                Serial.println("[CALIB] Phase 2: Waiting for 3 solenoid actuations...");
+            } else {
+                calibState = CALIB_SKIP_LOCK;
+                calibLastLockEventMs = now;
+                Serial.println("[CALIB] No Lock Solenoid configured. Skipping Phase 2...");
+            }
             
             // Clean up RAM immediately
             delete[] calibBuffer;
@@ -392,6 +409,10 @@ void loop() {
                     
                     Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
                 }
+            }
+        } else if (calibState == CALIB_SKIP_LOCK) {
+            if (now - calibLastLockEventMs >= 1000) {
+                skipCalibPhase2();
             }
         } else if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
             if (calibSewBuffer && calibSewIdx < CALIB_SEW_SAMPLES) {
@@ -588,11 +609,11 @@ void loop() {
         lastDisplayMs = now;
         
         if (calibState != CALIB_IDLE) {
-            displayShowCalibration((uint8_t)calibState, fineTuneCount);
+            displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx);
         } else {
             String ip = wifiOk ? WiFi.localIP().toString() : "offline";
-            displayShowRunning(appCfg.count, ip.c_str(),
-                               wifiOk && mqttIsConnected(), vibActive);
+            displayShowRunning(appCfg.count, ip.c_str(), appCfg.mqttEnabled,
+                               wifiOk && mqttIsConnected(), vibActive, appCfg.lastCalibStatus);
         }
     }
 }
