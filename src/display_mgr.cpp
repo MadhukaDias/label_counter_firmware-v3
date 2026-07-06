@@ -144,7 +144,7 @@ void displayShowCfgIP(const char* ip) {
     oled.display();
 }
 
-void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress) {
+void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, uint8_t imuState) {
     oled.clearDisplay();
     oled.setTextSize(1);
     
@@ -176,14 +176,23 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress) {
             break;
         case 4: // CALIB_SEW_WAITING
             oled.println("Step 3: First Sew");
-            oled.println("Sew a normal label");
+            if (imuState == 3) {
+                oled.setCursor(0, 32);
+                oled.println("CONFIRMING...");
+            } else {
+                oled.println("Sew a normal label");
+            }
             break;
         case 5: // CALIB_FINE_TUNE
             oled.println("Step 4: Fine Tune");
             oled.setCursor(0, 32);
-            oled.print("Attempt ");
-            oled.print(ftCount);
-            oled.println("/4");
+            if (imuState == 3) {
+                oled.println("CONFIRMING...");
+            } else {
+                oled.print("Attempt ");
+                oled.print(ftCount);
+                oled.println("/5");
+            }
             break;
         case 6: // CALIB_SEW_DONE
             oled.println("Processing Data...");

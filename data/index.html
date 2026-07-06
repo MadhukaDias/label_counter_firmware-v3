@@ -479,9 +479,9 @@ function openCalibrationModal() {
           s2.style.display = 'none';
           s3.style.display = 'block';
           if (d.imuState === 3) {
-            s3.innerHTML = "Step 4: Fine Tuning (" + d.ftCount + "/4)<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>CONFIRMING...</span>";
+            s3.innerHTML = "Step 4: Fine Tuning<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>CONFIRMING...</span>";
           } else {
-            s3.innerHTML = "Step 4: Fine Tuning (" + d.ftCount + "/4)<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>Please sew label " + d.ftCount + " of 4...</span>";
+            s3.innerHTML = "Step 4: Fine Tuning<br><span style='font-size:0.9rem; color:var(--dim); font-weight:normal;'>Attempt " + d.ftCount + "/5 completed. Sew next label...</span>";
           }
           s3.style.color = "var(--acc)";
         } else if (d.state === 0 && calibTimer > 0) {

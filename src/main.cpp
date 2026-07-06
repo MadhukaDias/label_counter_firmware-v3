@@ -609,7 +609,7 @@ void loop() {
         lastDisplayMs = now;
         
         if (calibState != CALIB_IDLE) {
-            displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx);
+            displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, imuGetState());
         } else {
             String ip = wifiOk ? WiFi.localIP().toString() : "offline";
             displayShowRunning(appCfg.count, ip.c_str(), appCfg.mqttEnabled,
