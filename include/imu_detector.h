@@ -15,7 +15,7 @@ void imuCalibrateBase();
 
 // Call every IMU_SAMPLE_MS ms.
 // Returns true when a new sewing cycle has been COUNTED.
-bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut = nullptr);
+bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut = nullptr);
 
 // Raw magnitude (for live display / calibration)
 int32_t imuGetMagnitude();

@@ -43,7 +43,7 @@ The Calibration follows 4 strict phases:
 
 **Phase 3 (First Sew Math):** You sew exactly 1 normal label. The firmware records an array of magnitude samples from start to finish.
 1. **Middle 50% Extraction:** The firmware slices off the first 25% and last 25% of the array to completely eliminate the noisy start/stop transients of the motor, leaving only the purest "cruising speed" vibration data.
-2. **Minimum Duration (`minDurationMs`):** The duration of this middle 50% chunk is calculated. The system divides this in half to set the absolute minimum time the machine must vibrate to be considered a valid sew.
+2. **Minimum Duration (`minDurationMs`):** The duration of this middle 50% chunk is calculated. The system divides this by 2.5 to set the absolute minimum time the machine must vibrate to be considered a valid sew.
 3. **Statistical Baselines:** The firmware sorts the middle 50% array and finds two key values:
    - `middleMedian`: The 50th percentile magnitude (the average cruising vibration).
    - `middleLowest`: The 10th percentile magnitude (the deepest dip in vibration during a sew).

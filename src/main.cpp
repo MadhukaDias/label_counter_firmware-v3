@@ -291,7 +291,7 @@ void loop() {
         lastImuMs = now;
 
         bool newVib  = false;
-        bool counted = imuUpdate(appCfg.vib, &newVib);
+        bool counted = imuUpdate(appCfg.vib, appCfg.lastLockPeak, &newVib);
         vibActive    = newVib;
         uint32_t currentMag = imuGetMagnitude();
 
@@ -464,10 +464,10 @@ void loop() {
                 uint16_t midLen = endIdx - startIdx;
                 
                 // 3. Minimum Duration Calculation
-                // midLen is half of procIdx. The duration of middle 50% is midLen * 20ms
-                // minDuration = duration / 2
-                appCfg.vib.minDurationMs = (midLen * IMU_SAMPLE_MS) / 2;
-                if (appCfg.vib.minDurationMs < 100) appCfg.vib.minDurationMs = 100; // clamp bottom
+                // midLen is half of procIdx. The duration of middle 50% is midLen * IMU_SAMPLE_MS
+                // minDuration = duration / 2.5
+                appCfg.vib.minDurationMs = (uint32_t)((midLen * IMU_SAMPLE_MS) / 2.5);
+                if (appCfg.vib.minDurationMs < 150) appCfg.vib.minDurationMs = 150; // clamp bottom
                 
                 // 4. Threshold Calculation
                 uint32_t* midBuf = new uint32_t[midLen];

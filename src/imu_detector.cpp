@@ -147,7 +147,10 @@ void imuInit() {
                   (long)baseX, (long)baseY, (long)baseZ);
 }
 
-bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
+static int32_t prevMag = 0;
+static uint32_t ignoreUntilMs = 0;
+
+bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut) {
     int32_t ax, ay, az;
     readAxes(ax, ay, az);
 
@@ -156,15 +159,27 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
 
     // Calculate magnitude of the AC component (deviation from average)
     int32_t mag = vibrMagnitude(ax, ay, az, avgX, avgY, avgZ);
+    int32_t deltaMag = abs(mag - prevMag);
+    prevMag = mag;
     lastMag = mag;
 
+    uint32_t now   = millis();
+
+    // If there is an extremely rapid magnitude change, it's a physical shock (solenoid)
+    if (deltaMag > 15000) {
+        ignoreUntilMs = now + 100; // Ignore all vibration for 100ms to let shockwave pass
+        Serial.printf("[IMU] Massive rapid change (%ld) detected! Ignoring shockwave.\n", (long)deltaMag);
+    }
+
     bool vibrating;
-    if (state == SewState::VIBRATING || state == SewState::CONFIRMED || state == SewState::COOLING) {
+    if (now < ignoreUntilMs) {
+        vibrating = false;
+    } else if (state == SewState::VIBRATING || state == SewState::CONFIRMED || state == SewState::COOLING) {
         vibrating = (mag >= cfg.stopThreshold);
     } else {
         vibrating = (mag >= cfg.threshold);
     }
-    uint32_t now   = millis();
+    
     bool counted   = false;
 
     if (vibActiveOut) *vibActiveOut = (state == SewState::VIBRATING ||
