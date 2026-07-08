@@ -41,6 +41,10 @@ static uint32_t calibLockPeaks[3] = {0, 0, 0};
 static uint32_t calibCurrentLockPeak = 0;
 static uint32_t calibLastLockEventMs = 0;
 static bool calibInLockEvent = false;
+static uint8_t calibSpikeWidth = 0;
+static bool calibPhase2Confirming = false;
+static uint32_t calibPhase2QuietStartMs = 0;
+static uint32_t calibPhase2SewingCooldownMs = 0;
 #define CALIB_SAMPLES 150
 static uint16_t calibIdx = 0;
 
@@ -69,6 +73,10 @@ void startCalibration() {
     calibCurrentLockPeak = 0;
     calibLastLockEventMs = 0;
     calibInLockEvent = false;
+    calibSpikeWidth = 0;
+    calibPhase2Confirming = false;
+    calibPhase2QuietStartMs = 0;
+    calibPhase2SewingCooldownMs = 0;
     Serial.println("[CALIB] Phase 1: Started 3-second noise sampling...");
     
     displayShowMessage("CALIBRATION", "MODE");
@@ -104,6 +112,8 @@ void skipCalibPhase2() {
         attemptDurations = new uint32_t[5];
         fineTuneCount = 0;
         
+        appCfg.vib.minDurationMs = 250;
+        cfgSave(appCfg);
         Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
     }
 }
@@ -391,47 +401,86 @@ void loop() {
             calibBuffer = nullptr;
             Serial.println("[CALIB] Phase 2: Waiting for 3 solenoid actuations...");
         } else if (calibState == CALIB_LOCK_WAITING) {
-            uint32_t lockTrigger = appCfg.vib.threshold * 7;
-            
-            // Only start a new event if 2.5s cooldown has passed OR we are already IN an event tracking it
-            if (currentMag > lockTrigger && (calibInLockEvent || (now - calibLastLockEventMs) >= 2500)) {
-                calibInLockEvent = true;
-                if (currentMag > calibCurrentLockPeak) {
-                    calibCurrentLockPeak = currentMag;
-                }
-            } else if (calibInLockEvent && currentMag < (lockTrigger / 2)) {
-                // Event ended
-                if (calibLockCount < 3) {
-                    calibLockPeaks[calibLockCount] = calibCurrentLockPeak;
-                }
-                calibLockCount++;
-                calibLastLockEventMs = now; // Start cooldown
-                Serial.printf("[CALIB] Solenoid Actuation %d/3 Detected. Peak: %lu (Cooldown started)\n", calibLockCount, calibCurrentLockPeak);
+            if (currentMag > appCfg.vib.threshold) {
+                // If it vibrates, push the sewing cooldown forward
+                calibPhase2SewingCooldownMs = now;
                 
-                calibInLockEvent = false;
-                calibCurrentLockPeak = 0;
+                if (calibPhase2Confirming) {
+                    // It spiked again during the quiet confirmation window! It's continuous sewing.
+                    calibPhase2Confirming = false;
+                    calibInLockEvent = true;
+                    calibSpikeWidth = 10; // Invalidate the width
+                } else if (now - calibLastLockEventMs >= 2500) {
+                    // Start or continue tracking a spike (only if not in lock cooldown)
+                    calibInLockEvent = true;
+                    calibSpikeWidth++;
+                    if (currentMag > calibCurrentLockPeak) {
+                        calibCurrentLockPeak = currentMag;
+                    }
+                }
+            } else {
+                // Magnitude dropped below threshold
+                if (calibInLockEvent) {
+                    calibInLockEvent = false;
+                    
+                    // Evaluate the spike we just saw
+                    if (calibSpikeWidth >= 1 && calibSpikeWidth <= 3) {
+                        // It was short enough! Start the 200ms quiet confirmation window
+                        calibPhase2Confirming = true;
+                        calibPhase2QuietStartMs = now;
+                    } else {
+                        // Too wide (>= 4). It was sewing vibration. Ignore it.
+                        calibSpikeWidth = 0;
+                        calibCurrentLockPeak = 0;
+                    }
+                }
                 
-                if (calibLockCount >= 3) {
-                    uint32_t p[3] = {calibLockPeaks[0], calibLockPeaks[1], calibLockPeaks[2]};
-                    std::sort(p, p + 3);
-                    appCfg.lastLockPeak = p[1]; // Median of 3
-                    
-                    cfgSave(appCfg);
-                    Serial.printf("[CALIB] Phase 2 Done. Median Lock Peak: %lu\n", appCfg.lastLockPeak);
-                    calibState = CALIB_SEW_WAITING;
-                    if (calibSewBuffer) delete[] calibSewBuffer;
-                    calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
-                    calibSewIdx = 0;
-                    
-                    if (attemptLowestPeaks) delete[] attemptLowestPeaks;
-                    if (attemptMedians) delete[] attemptMedians;
-                    if (attemptDurations) delete[] attemptDurations;
-                    attemptLowestPeaks = new uint32_t[5];
-                    attemptMedians = new uint32_t[5];
-                    attemptDurations = new uint32_t[5];
-                    fineTuneCount = 0;
-                    
-                    Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
+                if (calibPhase2Confirming) {
+                    if (now - calibPhase2QuietStartMs >= 200) {
+                        // It stayed completely quiet for 200ms after the spike!
+                        // CONFIRMED LOCK HIT!
+                        if (calibLockCount < 3) {
+                            calibLockPeaks[calibLockCount] = calibCurrentLockPeak;
+                        }
+                        calibLockCount++;
+                        calibLastLockEventMs = now; // Start 2.5s cooldown
+                        Serial.printf("[CALIB] Solenoid Actuation %d/3 Confirmed. Peak: %lu (Width: %d)\n", calibLockCount, calibCurrentLockPeak, calibSpikeWidth);
+                        
+                        calibPhase2Confirming = false;
+                        calibSpikeWidth = 0;
+                        calibCurrentLockPeak = 0;
+                        
+                        if (calibLockCount >= 3) {
+                            uint32_t p[3] = {calibLockPeaks[0], calibLockPeaks[1], calibLockPeaks[2]};
+                            std::sort(p, p + 3);
+                            appCfg.lastLockPeak = p[1]; // Median of 3
+                            
+                            cfgSave(appCfg);
+                            Serial.printf("[CALIB] Phase 2 Done. Median Lock Peak: %lu\n", appCfg.lastLockPeak);
+                            calibState = CALIB_SEW_WAITING;
+                            if (calibSewBuffer) delete[] calibSewBuffer;
+                            calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
+                            calibSewIdx = 0;
+                            
+                            if (attemptLowestPeaks) delete[] attemptLowestPeaks;
+                            if (attemptMedians) delete[] attemptMedians;
+                            if (attemptDurations) delete[] attemptDurations;
+                            attemptLowestPeaks = new uint32_t[5];
+                            attemptMedians = new uint32_t[5];
+                            attemptDurations = new uint32_t[5];
+                            fineTuneCount = 0;
+                            
+                            appCfg.vib.minDurationMs = 250;
+                            cfgSave(appCfg);
+                            Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
+                        }
+                    }
+                }
+                
+                // If it's been quiet long enough, and we are in the 2.5s cooldown, make sure variables are clean
+                if (!calibPhase2Confirming && !calibInLockEvent && (now - calibLastLockEventMs < 2500)) {
+                    calibSpikeWidth = 0;
+                    calibCurrentLockPeak = 0;
                 }
             }
         } else if (calibState == CALIB_SKIP_LOCK) {
@@ -483,8 +532,8 @@ void loop() {
                 
                 // 3. Minimum Duration Calculation
                 // midLen is half of procIdx. The duration of middle 50% is midLen * IMU_SAMPLE_MS
-                // minDuration = duration / 2.5
-                appCfg.vib.minDurationMs = (uint32_t)((midLen * IMU_SAMPLE_MS) / 2.5);
+                // minDuration = duration / 2
+                appCfg.vib.minDurationMs = (uint32_t)((midLen * IMU_SAMPLE_MS) / 2);
                 if (appCfg.vib.minDurationMs < 150) appCfg.vib.minDurationMs = 150; // clamp bottom
                 
                 // 4. Threshold Calculation
