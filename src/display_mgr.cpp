@@ -159,10 +159,8 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, u
             oled.println("Step 1: Noise Scan");
             oled.println("Keep machine off.");
             
-            // Draw loading bar with 3 splits (width 120, height 10)
+            // Draw loading bar (width 120, height 10)
             oled.drawRect(4, 42, 120, 10, SSD1306_WHITE);
-            oled.drawFastVLine(44, 42, 10, SSD1306_WHITE);
-            oled.drawFastVLine(84, 42, 10, SSD1306_WHITE);
             
             if (progress > 0) {
                 int fillW = (progress * 120) / 150; // max samples is 150
@@ -172,11 +170,15 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, u
             break;
         case 3: // CALIB_LOCK_WAITING
             oled.println("Step 2: Lock Scan");
-            oled.println("Trigger lock stitch");
-            oled.setCursor(0, 34);
-            oled.print("Count: ");
+            if (imuState == 3) {
+                oled.println("CONFIRMING...");
+            } else {
+                oled.println("Trigger lock stitch");
+            }
+            oled.setCursor(0, 42);
+            oled.print("Count:");
             oled.print(lockCount);
-            oled.println(" / 3");
+            oled.print("/3, BTN:Skip");
             break;
         case 4: // CALIB_SEW_WAITING
             oled.println("Step 3: First Sew");
@@ -185,6 +187,8 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, u
                 oled.println("CONFIRMING...");
             } else {
                 oled.println("Sew a normal label");
+                oled.setCursor(0, 42);
+                oled.println("Press BTN to capture");
             }
             break;
         case 5: // CALIB_FINE_TUNE
@@ -196,6 +200,8 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, u
                 oled.print("Attempt ");
                 oled.print(ftCount);
                 oled.println("/5");
+                oled.setCursor(0, 42);
+                oled.println("INC:Capture, DEC:Down");
             }
             break;
         case 6: // CALIB_SEW_DONE
@@ -210,11 +216,9 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, u
             break;
     }
     
-    // Footer hint for manual finish
-    if (state == 4 || state == 5) {
-        oled.setCursor(0, 54);
-        oled.print("Press BTN to finish");
-    }
+    // Footer hint for abort
+    oled.setCursor(0, 54);
+    oled.print("Press both BTNs:Abort");
     
     oled.display();
 }

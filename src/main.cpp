@@ -58,6 +58,7 @@ static uint32_t prevAttemptEndMs = 0;
 
 // Local Buffer for calibration
 uint32_t* calibBuffer = nullptr;
+uint32_t calibWarningMs = 0;
 
 void startCalibration() {
     if (!calibBuffer) calibBuffer = new uint32_t[CALIB_SAMPLES];
@@ -69,6 +70,9 @@ void startCalibration() {
     calibLastLockEventMs = 0;
     calibInLockEvent = false;
     Serial.println("[CALIB] Phase 1: Started 3-second noise sampling...");
+    
+    displayShowMessage("CALIBRATION", "MODE");
+    delay(1000);
 
     if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
         mqttPublishEvent(1, appCfg.deviceId); // calib_start
@@ -109,6 +113,9 @@ void abortCalibration() {
         calibState = CALIB_IDLE;
         appCfg.lastCalibStatus = 2; // CANCELED
         cfgSave(appCfg);
+        
+        displayShowMessage("CALIBRATION", "ABORTED");
+        delay(1000);
         
         // Cleanup arrays
         if (attemptLowestPeaks) { delete[] attemptLowestPeaks; attemptLowestPeaks = nullptr; }
@@ -195,7 +202,11 @@ static void handleButtons() {
         Serial.println("[BTN] Long INC → reset");
     }
     if (btnIncLast == LOW && incNow == HIGH && !btnIncLong && (now - btnIncDownMs) >= DEBOUNCE_MS) {
-        if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
+        if (calibState == CALIB_SAMPLING) {
+            // Ignore during Phase 1
+        } else if (calibState == CALIB_LOCK_WAITING) {
+            skipCalibPhase2();
+        } else if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
             calibState = CALIB_SEW_DONE; // Manual override/force
             Serial.println("[CALIB] Phase 3/4 manual force finish (INC).");
         } else {
@@ -219,18 +230,25 @@ static void handleButtons() {
         Serial.println("[BTN] Long DEC → reset");
     }
     if (btnDecLast == LOW && decNow == HIGH && !btnDecLong && (now - btnDecDownMs) >= DEBOUNCE_MS) {
-        if (calibState == CALIB_FINE_TUNE && fineTuneCount > 0) {
+        if (calibState == CALIB_SAMPLING) {
+            // Ignore during Phase 1
+        } else if (calibState == CALIB_LOCK_WAITING) {
+            skipCalibPhase2();
+        } else if (calibState == CALIB_FINE_TUNE && fineTuneCount > 0) {
             fineTuneCount--;
-            uint32_t start2 = imuGetLastVibStart();
-            uint32_t newSil = (start2 > prevAttemptEndMs) ? (start2 - prevAttemptEndMs) + 250 : 250;
-            if (newSil > 2000) newSil = 2000;
-            appCfg.vib.silenceMs = newSil;
-            cfgSave(appCfg);
-            Serial.printf("[CALIB] Merge Attempts! New silence gap: %lu ms\n", newSil);
-        } else if (calibState == CALIB_SEW_WAITING) {
-            // Can't merge on 1st attempt, do nothing or force
-            calibState = CALIB_SEW_DONE;
-            Serial.println("[CALIB] Phase 3 manual override (DEC).");
+            if ((now - prevAttemptEndMs) <= (appCfg.vib.silenceMs * 2.5)) {
+                uint32_t start2 = imuGetLastVibStart();
+                uint32_t newSil = (start2 > prevAttemptEndMs) ? (start2 - prevAttemptEndMs) + 250 : 250;
+                if (newSil > 2000) newSil = 2000;
+                appCfg.vib.silenceMs = newSil;
+                cfgSave(appCfg);
+                Serial.printf("[CALIB] Merge Attempts! New silence gap: %lu ms\n", newSil);
+            } else {
+                Serial.println("[CALIB] Too much time passed, stepped back without merging.");
+            }
+        } else if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
+            calibState = CALIB_SEW_DONE; // Manual override/force
+            Serial.println("[CALIB] Phase 3/4 manual force finish (DEC).");
         } else {
             if (appCfg.count > 0) appCfg.count--;
             cfgSaveCount(appCfg.count);
@@ -550,6 +568,9 @@ void loop() {
                         if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
                             mqttPublishEvent(2, appCfg.deviceId); // calib_success
                         }
+                        
+                        displayShowMessage("CALIBRATION", "DONE");
+                        delay(1000);
                     }
                 }
             } else {
@@ -557,6 +578,7 @@ void loop() {
                 if (fineTuneCount > 0) calibState = CALIB_FINE_TUNE;
                 else calibState = CALIB_SEW_WAITING;
                 calibSewIdx = 0; // safely retry instead of aborting
+                calibWarningMs = millis(); // Trigger OLED warning
             }
             delete[] processedBuf;
         }
@@ -614,12 +636,20 @@ void loop() {
         delay(3000);
     }
 
-    // ── Display at 4 Hz ──
-    if (now - lastDisplayMs >= 250) {
+    // ── Display update ────────────────────────────────────────────────────────
+    if (now - lastDisplayMs >= 100) {
         lastDisplayMs = now;
         
         if (calibState != CALIB_IDLE) {
-            displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, imuGetState(), calibLockCount);
+            if (calibWarningMs > 0 && (now - calibWarningMs < 2000)) {
+                displayShowMessage("WARNING", "Invalid Data!");
+            } else {
+                uint8_t dispImuState = imuGetState();
+                if (calibState == CALIB_LOCK_WAITING && calibLockCount > 0 && (now - calibLastLockEventMs < 2500)) {
+                    dispImuState = 3;
+                }
+                displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, dispImuState, calibLockCount);
+            }
         } else {
             String ip = wifiOk ? WiFi.localIP().toString() : "offline";
             displayShowRunning(appCfg.count, ip.c_str(), appCfg.mqttEnabled,
