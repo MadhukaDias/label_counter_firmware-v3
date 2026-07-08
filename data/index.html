@@ -497,6 +497,9 @@ function openCalibrationModal() {
             document.getElementById('calib-modal').style.display = 'none';
             loadConfig();
             toast('Calibration aborted');
+            if (typeof mainPollInterval !== 'undefined' && !mainPollInterval) {
+                mainPollInterval = setInterval(poll, 1000);
+            }
           } else {
             s2.style.display = 'none';
             s3.style.display = 'block';
