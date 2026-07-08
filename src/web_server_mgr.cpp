@@ -515,7 +515,7 @@ function openCalibrationModal() {
           if (d.cStat === 2) {
             document.getElementById('calib-modal').style.display = 'none';
             loadConfig();
-            toast('Calibration aborted');
+            showToast('Calibration aborted');
             if (typeof mainPollInterval !== 'undefined' && !mainPollInterval) {
                 mainPollInterval = setInterval(poll, 1000);
             }
@@ -526,7 +526,7 @@ function openCalibrationModal() {
             loadConfig();
             setTimeout(() => {
               document.getElementById('calib-modal').style.display = 'none';
-              toast('Calibration complete!');
+              showToast('Calibration complete!');
               if (!mainPollInterval) mainPollInterval = setInterval(poll, 1000);
             }, 1500);
           }
@@ -557,7 +557,7 @@ function abortCalibrate() {
     document.getElementById('calib-modal').style.display = 'none';
     if(b) b.textContent = 'Abort Calibration';
     loadConfig();
-    toast('Calibration canceled');
+    showToast('Calibration canceled');
     if (!mainPollInterval) mainPollInterval = setInterval(poll, 1000);
   });
 }
