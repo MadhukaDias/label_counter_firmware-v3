@@ -16,4 +16,4 @@ void displayShowRunning(uint32_t count, const char* ip,
 void displayShowError(const char* line1, const char* line2 = nullptr);
 void displayShowMessage(const char* line1, const char* line2 = nullptr);
 void displayShowCfgIP(const char* ip);   // small overlay: config IP
-void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress = 0, uint8_t imuState = 0);
+void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress = 0, uint8_t imuState = 0, uint8_t lockCount = 0);

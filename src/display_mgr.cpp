@@ -144,7 +144,7 @@ void displayShowCfgIP(const char* ip) {
     oled.display();
 }
 
-void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, uint8_t imuState) {
+void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, uint8_t imuState, uint8_t lockCount) {
     oled.clearDisplay();
     oled.setTextSize(1);
     
@@ -173,6 +173,10 @@ void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, u
         case 3: // CALIB_LOCK_WAITING
             oled.println("Step 2: Lock Scan");
             oled.println("Trigger lock stitch");
+            oled.setCursor(0, 34);
+            oled.print("Count: ");
+            oled.print(lockCount);
+            oled.println(" / 3");
             break;
         case 4: // CALIB_SEW_WAITING
             oled.println("Step 3: First Sew");

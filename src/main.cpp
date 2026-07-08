@@ -554,8 +554,9 @@ void loop() {
                 }
             } else {
                 Serial.println("[CALIB] Phase 3/4 Error: Not enough valid data!");
-                if (calibState == CALIB_FINE_TUNE) calibSewIdx = 0; // retry
-                else calibState = CALIB_IDLE; // abort if 1st attempt fails entirely
+                if (fineTuneCount > 0) calibState = CALIB_FINE_TUNE;
+                else calibState = CALIB_SEW_WAITING;
+                calibSewIdx = 0; // safely retry instead of aborting
             }
             delete[] processedBuf;
         }
@@ -618,7 +619,7 @@ void loop() {
         lastDisplayMs = now;
         
         if (calibState != CALIB_IDLE) {
-            displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, imuGetState());
+            displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, imuGetState(), calibLockCount);
         } else {
             String ip = wifiOk ? WiFi.localIP().toString() : "offline";
             displayShowRunning(appCfg.count, ip.c_str(), appCfg.mqttEnabled,

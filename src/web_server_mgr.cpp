@@ -409,7 +409,13 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(body)
   });
-  showToast(r.ok ? 'Configuration saved' : 'Save failed');
+  
+  if (!isLocked) {
+    isLocked = true;
+    applyLockState();
+  }
+  
+  showToast(r.ok ? 'Configuration saved & Locked' : 'Save failed');
 });
 
 function resetDefs() {
