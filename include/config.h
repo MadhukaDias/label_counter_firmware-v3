@@ -10,6 +10,16 @@
 #define PIN_BTN_DEC      D4   // -1 count correction
 
 // ──────────────────────────────────────────────
+//  Pin Definitions  (ESP32-S3-Nano)
+// ──────────────────────────────────────────────
+/* 
+#define PIN_SDA       11   // A4 / SDA
+#define PIN_SCL       12   // A5 / SCL
+#define PIN_BTN_INC   13   // A6 / +1 count correction
+#define PIN_BTN_DEC   14   // A7 / -1 count correction
+ */
+
+// ──────────────────────────────────────────────
 //  OLED
 // ──────────────────────────────────────────────
 #define OLED_ADDRESS     0x3C
