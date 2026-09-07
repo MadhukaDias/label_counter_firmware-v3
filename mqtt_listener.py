@@ -3,7 +3,7 @@ import json
 
 MQTT_BROKER = "broker.emqx.io"
 MQTT_PORT = 1883
-MQTT_TOPIC = "labelcounter/data"
+MQTT_TOPIC = "labelcounter/+/data"
 
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
@@ -29,7 +29,7 @@ def on_message(client, userdata, msg):
         elif "event" in data:
             event_type = data["event"]
             if event_type == "calibration_start":
-                print(f"\n[ CALIBRATION ] Device: {device_id} started Phase 1 (Noise Scan)!")
+                print(f"\n[ CALIBRATION ] Device: {device_id} started Calibration mode!")
             elif event_type == "calibration_done":
                 status = data.get("status", "unknown").upper()
                 print(f"[ CALIBRATION ] Device: {device_id} finished calibration. Result: {status}\n")

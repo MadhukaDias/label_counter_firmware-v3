@@ -8,6 +8,7 @@ static WiFiClient   wifiClient;
 static PubSubClient mqttClient(wifiClient);
 
 static char         _clientId[32];
+static char         _myDeviceId[32];
 static uint32_t     _lastReconnectMs = 0;
 
 struct MqttMessage {
@@ -32,7 +33,9 @@ static void reconnect() {
     Serial.printf("[MQTT] Connecting to %s ...\n", MQTT_HOST);
     if (mqttClient.connect(_clientId)) {
         Serial.println("[MQTT] Connected");
-        mqttClient.subscribe(MQTT_TOPIC_CFG);
+        char topicCfg[64];
+        snprintf(topicCfg, sizeof(topicCfg), "labelcounter/%s/config", _myDeviceId);
+        mqttClient.subscribe(topicCfg);
     } else {
         Serial.printf("[MQTT] Failed rc=%d\n", mqttClient.state());
     }
@@ -67,9 +70,11 @@ static void mqttTaskRunner(void* pvParameters) {
 
                 char buf[128];
                 size_t n = serializeJson(doc, buf, sizeof(buf));
-                mqttClient.publish(MQTT_TOPIC_PUB, buf, n);
+                char topicPub[64];
+                snprintf(topicPub, sizeof(topicPub), "labelcounter/%s/data", msg.deviceId);
+                mqttClient.publish(topicPub, buf, n);
 
-                Serial.printf("[MQTT Task] Published: %s\n", buf);
+                Serial.printf("[MQTT Task] Published to %s: %s\n", topicPub, buf);
             }
         }
         // Yield to watchdog
@@ -80,6 +85,7 @@ static void mqttTaskRunner(void* pvParameters) {
 // ── Public ────────────────────────────────────────────────────────────────────
 void mqttInit(const char* deviceId) {
     snprintf(_clientId, sizeof(_clientId), "lc_%s", deviceId);
+    strncpy(_myDeviceId, deviceId, sizeof(_myDeviceId));
     mqttClient.setServer(MQTT_HOST, MQTT_PORT);
     mqttClient.setKeepAlive(MQTT_KEEPALIVE);
     mqttClient.setCallback(onMessage);
