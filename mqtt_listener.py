@@ -22,19 +22,23 @@ def on_message(client, userdata, msg):
         
         device_id = data.get("device", "Unknown")
         
-        if "count" in data:
-            count = data["count"]
-            print(f"[ COUNT EVENT ] Device: {device_id} | Total Labels: {count}")
-            
-        elif "event" in data:
+        if "event" in data:
             event_type = data["event"]
             if event_type == "calibration_start":
                 print(f"\n[ CALIBRATION ] Device: {device_id} started Calibration mode!")
             elif event_type == "calibration_done":
                 status = data.get("status", "unknown").upper()
                 print(f"[ CALIBRATION ] Device: {device_id} finished calibration. Result: {status}\n")
+            elif event_type in ["interval_update", "button_inc", "button_dec", "count_reset"]:
+                count = data.get("count", 0)
+                waveform = data.get("data", [])
+                print(f"[ {event_type.upper()} ] Device: {device_id} | Total Labels: {count} | Waveform Size: {len(waveform)} samples")
             else:
                 print(f"[ SYSTEM EVENT ] {event_type}")
+                
+        elif "count" in data:
+            count = data["count"]
+            print(f"[ COUNT EVENT ] Device: {device_id} | Total Labels: {count}")
                 
     except json.JSONDecodeError:
         print(f"[RAW MQTT] Topic: {msg.topic} | Payload: {payload}")

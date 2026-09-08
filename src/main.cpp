@@ -32,6 +32,18 @@ static bool     vibActive     = false;
 static uint8_t  sewState      = 0;
 static bool     wifiOk        = false;
 
+// ── Waveform Buffer ───────────────────────────────────────────────────────────
+#define WAVEFORM_MAX_SAMPLES 2000
+static uint32_t waveformBuffer[WAVEFORM_MAX_SAMPLES];
+static uint16_t waveformIdx = 0;
+
+static void flushWaveformToMqtt(const char* eventName) {
+    if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
+        mqttPublishWaveform(appCfg.count, eventName, waveformBuffer, waveformIdx, appCfg.deviceId);
+    }
+    waveformIdx = 0; // Instantly clear/flush the buffer from RAM
+}
+
 #include <algorithm> // for std::sort
 // ── Calibration ───────────────────────────────────────────────────────────────
 enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING, CALIB_SEW_WAITING, CALIB_FINE_TUNE, CALIB_SEW_DONE, CALIB_SKIP_LOCK };
@@ -83,7 +95,7 @@ void startCalibration() {
     delay(1000);
 
     if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
-        mqttPublishEvent(1, appCfg.deviceId); // calib_start
+        mqttPublishEventStr("calibration_start", "", appCfg.deviceId);
     }
 }
 
@@ -139,7 +151,7 @@ void abortCalibration() {
         lastDisplayMs = millis() + 1000; // Small pause to remain readable
 
         if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
-            mqttPublishEvent(3, appCfg.deviceId); // calib_canceled
+            mqttPublishEventStr("calibration_done", "canceled", appCfg.deviceId);
         }
     }
 }
@@ -177,6 +189,8 @@ static void handleButtons() {
     // ── Dual button ──
     if (incNow == LOW && decNow == LOW) {
         if (btnBothDownMs == 0) btnBothDownMs = now;
+        btnIncLong = true; // Strictly prevent individual short-press triggers
+        btnDecLong = true; // Strictly prevent individual short-press triggers
         if (calibState == CALIB_IDLE) {
             if (!btnBothLong && (now - btnBothDownMs) >= LONG_PRESS_MS) {
                 btnBothLong = true;
@@ -206,9 +220,9 @@ static void handleButtons() {
     }
     if (incNow == LOW && !btnIncLong && (now - btnIncDownMs) >= LONG_PRESS_MS && btnBothDownMs == 0) {
         btnIncLong    = true;
+        if (calibState == CALIB_IDLE) flushWaveformToMqtt("count_reset");
         appCfg.count  = 0;
         cfgSaveCount(0);
-        if (wifiOk && appCfg.mqttEnabled && mqttIsConnected() && calibState == CALIB_IDLE) mqttPublish(appCfg.count, appCfg.deviceId);
         Serial.println("[BTN] Long INC → reset");
     }
     if (btnIncLast == LOW && incNow == HIGH && !btnIncLong && (now - btnIncDownMs) >= DEBOUNCE_MS) {
@@ -220,9 +234,9 @@ static void handleButtons() {
             calibState = CALIB_SEW_DONE; // Manual override/force
             Serial.println("[CALIB] Phase 3/4 manual force finish (INC).");
         } else {
+            if (calibState == CALIB_IDLE) flushWaveformToMqtt("button_inc");
             appCfg.count++;
             cfgSaveCount(appCfg.count);
-            if (wifiOk && appCfg.mqttEnabled && mqttIsConnected() && calibState == CALIB_IDLE) mqttPublish(appCfg.count, appCfg.deviceId);
             Serial.printf("[BTN] +1 → %lu\n", (unsigned long)appCfg.count);
         }
     }
@@ -234,9 +248,9 @@ static void handleButtons() {
     }
     if (decNow == LOW && !btnDecLong && (now - btnDecDownMs) >= LONG_PRESS_MS && btnBothDownMs == 0) {
         btnDecLong    = true;
+        if (calibState == CALIB_IDLE) flushWaveformToMqtt("count_reset");
         appCfg.count  = 0;
         cfgSaveCount(0);
-        if (wifiOk && appCfg.mqttEnabled && mqttIsConnected() && calibState == CALIB_IDLE) mqttPublish(appCfg.count, appCfg.deviceId);
         Serial.println("[BTN] Long DEC → reset");
     }
     if (btnDecLast == LOW && decNow == HIGH && !btnDecLong && (now - btnDecDownMs) >= DEBOUNCE_MS) {
@@ -260,9 +274,9 @@ static void handleButtons() {
             calibState = CALIB_SEW_DONE; // Manual override/force
             Serial.println("[CALIB] Phase 3/4 manual force finish (DEC).");
         } else {
+            if (calibState == CALIB_IDLE) flushWaveformToMqtt("button_dec");
             if (appCfg.count > 0) appCfg.count--;
             cfgSaveCount(appCfg.count);
-            if (wifiOk && appCfg.mqttEnabled && mqttIsConnected() && calibState == CALIB_IDLE) mqttPublish(appCfg.count, appCfg.deviceId);
             Serial.printf("[BTN] -1 → %lu\n", (unsigned long)appCfg.count);
         }
     }
@@ -322,6 +336,11 @@ void loop() {
         bool counted = imuUpdate(appCfg.vib, appCfg.lastLockPeak, &newVib);
         vibActive    = newVib;
         uint32_t currentMag = imuGetMagnitude();
+
+        // ── Record Waveform ───────────────────────────────────────────────────────────
+        if (waveformIdx < WAVEFORM_MAX_SAMPLES) {
+            waveformBuffer[waveformIdx++] = currentMag;
+        }
 
         if (calibState == CALIB_SAMPLING) {
             calibBuffer[calibIdx++] = currentMag;
@@ -615,7 +634,7 @@ void loop() {
                         calibState = CALIB_IDLE;
 
                         if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
-                            mqttPublishEvent(2, appCfg.deviceId); // calib_success
+                            mqttPublishEventStr("calibration_done", "success", appCfg.deviceId);
                         }
                         
                         displayShowMessage("CALIBRATION", "DONE");
@@ -650,8 +669,7 @@ void loop() {
             appCfg.count++;
             Serial.printf("[COUNT] %lu\n", (unsigned long)appCfg.count);
             cfgSaveCount(appCfg.count);
-            if (wifiOk && appCfg.mqttEnabled && mqttIsConnected() && calibState == CALIB_IDLE) mqttPublish(appCfg.count, appCfg.deviceId);
-            lastMqttMs = now;
+            // Count publishes are now handled by interval and button triggers
         }
     }
 
@@ -662,7 +680,7 @@ void loop() {
     if (wifiOk && appCfg.mqttEnabled) {
         if (now - lastMqttMs >= appCfg.mqttIntervalMs) {
             lastMqttMs = now;
-            if (mqttIsConnected() && calibState == CALIB_IDLE) mqttPublish(appCfg.count, appCfg.deviceId);
+            if (calibState == CALIB_IDLE) flushWaveformToMqtt("interval_update");
         }
     }
 
