@@ -1,7 +1,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
-#include <WiFiManager.h>
+#include "network_mgr.h"
+#include "button_input.h"
 #include <ArduinoOTA.h>
 
 #include "config.h"
@@ -18,15 +19,15 @@ static uint32_t lastImuMs     = 0;
 static uint32_t lastMqttMs    = 0;
 static uint32_t lastDisplayMs = 0;
 
-// Button state
-static bool     btnIncLast    = HIGH;
-static bool     btnDecLast    = HIGH;
-static uint32_t btnIncDownMs  = 0;
-static uint32_t btnDecDownMs  = 0;
-static bool     btnIncLong    = false;
-static bool     btnDecLong    = false;
-static uint32_t btnBothDownMs = 0;
-static bool     btnBothLong   = false;
+// Four debounced buttons: INC, DEC, SELECT, BACK.
+static ButtonInput buttons[4];
+static const uint8_t buttonPins[]={PIN_BTN_INC,PIN_BTN_DEC,PIN_BTN_SELECT,PIN_BTN_BACK};
+static bool chord=false, chordFired=false;
+static uint32_t chordAt=0;
+static bool menuOpen=false, resetConfirm=false, networkView=false;
+static uint8_t menuSelection=0;
+static bool otaStarted=false;
+static bool portalWasActive=false;
 
 static bool     vibActive     = false;
 static uint8_t  sewState      = 0;
@@ -77,7 +78,17 @@ uint32_t* calibBuffer = nullptr;
 uint32_t calibWarningMs = 0;
 
 void startCalibration() {
-    if (!calibBuffer) calibBuffer = new uint32_t[CALIB_SAMPLES];
+    if(calibState != CALIB_IDLE) return;
+    menuOpen=false; resetConfirm=false; networkView=false;
+    fineTuneCount=0;
+    // Defensively release any stale allocations from a prior session so we
+    // cannot leak a buffer if a previous exit path left one behind.
+    if (calibBuffer) { delete[] calibBuffer; calibBuffer = nullptr; }
+    if (calibSewBuffer) { delete[] calibSewBuffer; calibSewBuffer = nullptr; }
+    if (attemptLowestPeaks) { delete[] attemptLowestPeaks; attemptLowestPeaks = nullptr; }
+    if (attemptMedians) { delete[] attemptMedians; attemptMedians = nullptr; }
+    if (attemptDurations) { delete[] attemptDurations; attemptDurations = nullptr; }
+    calibBuffer = new uint32_t[CALIB_SAMPLES];
     calibState = CALIB_SAMPLING;
     calibIdx = 0;
     calibLockCount = 0;
@@ -92,7 +103,7 @@ void startCalibration() {
     Serial.println("[CALIB] Phase 1: Started 3-second noise sampling...");
     
     displayShowMessage("CALIBRATION", "MODE");
-    delay(1000);
+    // Notification is timed by the display manager; keep sampling responsive.
 
     if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
         mqttPublishEventStr("calibration_start", "", appCfg.deviceId);
@@ -109,9 +120,19 @@ void getCalibStatus(int& state, int& lockCount, int& imuState, int& ftCount) {
 void skipCalibPhase2() {
     if (calibState == CALIB_LOCK_WAITING || calibState == CALIB_SKIP_LOCK) {
         calibState = CALIB_SEW_WAITING;
-        appCfg.lastLockPeak = 22000; // Default fallback for spike detection
+        // No lock solenoid configured: derive a spike-detection fallback from
+        // the Phase 1 noise profile instead of a machine-blind constant. Lock
+        // impacts are far stronger than sewing vibration, so scale the measured
+        // clean maximum well above the calibrated threshold.
+        uint32_t fallback = std::max((uint32_t)(appCfg.vib.threshold * 5),
+                                     (uint32_t)2000);
+        if (appCfg.lastCalibMax > 0 && appCfg.lastCalibMax < 0xFFFFFFF) {
+            fallback = std::max(appCfg.lastCalibMax * 20u, fallback);
+        }
+        appCfg.lastLockPeak = fallback;
         cfgSave(appCfg);
-        Serial.println("[CALIB] Phase 2 Skipped. Lock peak set to 22000 fallback.");
+        Serial.printf("[CALIB] Phase 2 Skipped. Lock peak set to %lu fallback.\n",
+                      (unsigned long)appCfg.lastLockPeak);
         if (calibSewBuffer) delete[] calibSewBuffer;
         calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
         calibSewIdx = 0;
@@ -137,7 +158,7 @@ void abortCalibration() {
         cfgSave(appCfg);
         
         displayShowMessage("CALIBRATION", "ABORTED");
-        delay(1000);
+        // Notification is timed by the display manager; keep sampling responsive.
         
         // Cleanup arrays
         if (attemptLowestPeaks) { delete[] attemptLowestPeaks; attemptLowestPeaks = nullptr; }
@@ -148,7 +169,7 @@ void abortCalibration() {
         
         Serial.println("[CALIB] Calibration aborted by user.");
         displayShowMessage("Aborting", "Calibration...");
-        lastDisplayMs = millis() + 1000; // Small pause to remain readable
+        lastDisplayMs = millis();
 
         if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
             mqttPublishEventStr("calibration_done", "canceled", appCfg.deviceId);
@@ -156,133 +177,66 @@ void abortCalibration() {
     }
 }
 
-// ── WiFiManager ───────────────────────────────────────────────────────────────
-static void startWiFi() {
-    WiFiManager wm;
-    wm.setConfigPortalTimeout(WIFI_TIMEOUT_S);
-
-    wm.setAPCallback([](WiFiManager*) {
-        String ip = WiFi.softAPIP().toString();
-        displayShowPortal(WIFI_AP_NAME, ip.c_str());
-        Serial.printf("[WiFi] AP: %s  IP: %s\n", WIFI_AP_NAME, ip.c_str());
-    });
-
-    displayShowConnecting("Saved network...");
-    wifiOk = wm.autoConnect(WIFI_AP_NAME, WIFI_AP_PASS);
-
-    if (wifiOk) {
-        Serial.printf("[WiFi] Connected: %s  IP: %s\n",
-                      WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-    } else {
-        Serial.println("[WiFi] Portal timeout — running offline");
-        displayShowError("WiFi timeout", "Running offline");
-        delay(2000);
+// Button actions retain calibration capture/undo behavior from the original.
+static void captureOrSkip(){
+    if(calibState==CALIB_LOCK_WAITING||calibState==CALIB_SKIP_LOCK)skipCalibPhase2();
+    else if(calibState==CALIB_SEW_WAITING||calibState==CALIB_FINE_TUNE)calibState=CALIB_SEW_DONE;
+}
+static void undoCapture(uint32_t now){
+    if(calibState!=CALIB_FINE_TUNE||fineTuneCount==0)return;
+    --fineTuneCount;
+    if((now-prevAttemptEndMs)<=(appCfg.vib.silenceMs*2.5)){
+        uint32_t start=imuGetLastVibStart();
+        uint32_t gap=start>prevAttemptEndMs?start-prevAttemptEndMs+250:250;
+        appCfg.vib.silenceMs=std::min(uint32_t(2000),gap);cfgSave(appCfg);
     }
 }
-
-// ── Buttons ───────────────────────────────────────────────────────────────────
-static void handleButtons() {
-    uint32_t now = millis();
-    bool incNow  = digitalRead(PIN_BTN_INC);
-    bool decNow  = digitalRead(PIN_BTN_DEC);
-
-    // ── Dual button ──
-    if (incNow == LOW && decNow == LOW) {
-        if (btnBothDownMs == 0) btnBothDownMs = now;
-        btnIncLong = true; // Strictly prevent individual short-press triggers
-        btnDecLong = true; // Strictly prevent individual short-press triggers
-        if (calibState == CALIB_IDLE) {
-            if (!btnBothLong && (now - btnBothDownMs) >= LONG_PRESS_MS) {
-                btnBothLong = true;
-                btnIncLong = true; // Prevent individual triggers on release
-                btnDecLong = true;
-                Serial.println("[BTN] Dual Long Press → Start Calibration");
-                startCalibration();
-            }
-        } else {
-            if (!btnBothLong && (now - btnBothDownMs) >= 3000) {
-                btnBothLong = true;
-                btnIncLong = true;
-                btnDecLong = true;
-                Serial.println("[BTN] Dual Long Press (3s) → Abort Calibration");
-                abortCalibration();
-            }
+static void handleButtons(){
+    uint32_t now=millis();
+    for(int i=0;i<4;i++)buttons[i].update(digitalRead(buttonPins[i])==LOW,now,DEBOUNCE_MS,LONG_PRESS_MS);
+    // Suppress both individual release actions until BOTH chord keys are up.
+    if(buttons[0].down&&buttons[1].down&&!chord){chord=true;chordAt=now;chordFired=false;}
+    if(chord){
+        buttons[0].clicked=buttons[1].clicked=false;
+        if(buttons[0].down&&buttons[1].down&&!chordFired&&now-chordAt>=(calibState==CALIB_IDLE?2000u:3000u)){
+            chordFired=true;
+            if(calibState==CALIB_IDLE)startCalibration();else abortCalibration();
         }
-    } else {
-        btnBothDownMs = 0;
-        btnBothLong = false;
+        if(!buttons[0].down&&!buttons[1].down)chord=false;
     }
-
-    // ── INC button ──
-    if (btnIncLast == HIGH && incNow == LOW) {
-        btnIncDownMs = now;
-        btnIncLong   = false;
-    }
-    if (incNow == LOW && !btnIncLong && (now - btnIncDownMs) >= LONG_PRESS_MS && btnBothDownMs == 0) {
-        btnIncLong    = true;
-        if (calibState == CALIB_IDLE) flushWaveformToMqtt("count_reset");
-        appCfg.count  = 0;
-        cfgSaveCount(0);
-        Serial.println("[BTN] Long INC → reset");
-    }
-    if (btnIncLast == LOW && incNow == HIGH && !btnIncLong && (now - btnIncDownMs) >= DEBOUNCE_MS) {
-        if (calibState == CALIB_SAMPLING) {
-            // Ignore during Phase 1
-        } else if (calibState == CALIB_LOCK_WAITING) {
-            skipCalibPhase2();
-        } else if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
-            calibState = CALIB_SEW_DONE; // Manual override/force
-            Serial.println("[CALIB] Phase 3/4 manual force finish (INC).");
-        } else {
-            if (calibState == CALIB_IDLE) flushWaveformToMqtt("button_inc");
-            appCfg.count++;
-            cfgSaveCount(appCfg.count);
-            Serial.printf("[BTN] +1 → %lu\n", (unsigned long)appCfg.count);
+    if(calibState!=CALIB_IDLE){
+        if(buttons[3].longPress){abortCalibration();return;}
+        if(buttons[0].clicked||buttons[2].clicked)captureOrSkip();
+        if(buttons[1].clicked){
+            if(calibState==CALIB_LOCK_WAITING)skipCalibPhase2();
+            else if(calibState==CALIB_FINE_TUNE)undoCapture(now);
         }
+        return;
     }
-
-    // ── DEC button ──
-    if (btnDecLast == HIGH && decNow == LOW) {
-        btnDecDownMs = now;
-        btnDecLong   = false;
+    if(buttons[3].clicked){
+        if(resetConfirm)resetConfirm=false;
+        else if(menuOpen)menuOpen=false;
+        else networkView=!networkView;
+        return;
     }
-    if (decNow == LOW && !btnDecLong && (now - btnDecDownMs) >= LONG_PRESS_MS && btnBothDownMs == 0) {
-        btnDecLong    = true;
-        if (calibState == CALIB_IDLE) flushWaveformToMqtt("count_reset");
-        appCfg.count  = 0;
-        cfgSaveCount(0);
-        Serial.println("[BTN] Long DEC → reset");
-    }
-    if (btnDecLast == LOW && decNow == HIGH && !btnDecLong && (now - btnDecDownMs) >= DEBOUNCE_MS) {
-        if (calibState == CALIB_SAMPLING) {
-            // Ignore during Phase 1
-        } else if (calibState == CALIB_LOCK_WAITING) {
-            skipCalibPhase2();
-        } else if (calibState == CALIB_FINE_TUNE && fineTuneCount > 0) {
-            fineTuneCount--;
-            if ((now - prevAttemptEndMs) <= (appCfg.vib.silenceMs * 2.5)) {
-                uint32_t start2 = imuGetLastVibStart();
-                uint32_t newSil = (start2 > prevAttemptEndMs) ? (start2 - prevAttemptEndMs) + 250 : 250;
-                if (newSil > 2000) newSil = 2000;
-                appCfg.vib.silenceMs = newSil;
-                cfgSave(appCfg);
-                Serial.printf("[CALIB] Merge Attempts! New silence gap: %lu ms\n", newSil);
-            } else {
-                Serial.println("[CALIB] Too much time passed, stepped back without merging.");
-            }
-        } else if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
-            calibState = CALIB_SEW_DONE; // Manual override/force
-            Serial.println("[CALIB] Phase 3/4 manual force finish (DEC).");
-        } else {
-            if (calibState == CALIB_IDLE) flushWaveformToMqtt("button_dec");
-            if (appCfg.count > 0) appCfg.count--;
-            cfgSaveCount(appCfg.count);
-            Serial.printf("[BTN] -1 → %lu\n", (unsigned long)appCfg.count);
+    if(menuOpen){
+        if(!resetConfirm){
+            if(buttons[0].clicked)menuSelection=(menuSelection+2)%3;
+            if(buttons[1].clicked)menuSelection=(menuSelection+1)%3;
         }
+        if(buttons[2].clicked){
+            if(resetConfirm){
+                appCfg.count=0;cfgSaveCount(0);flushWaveformToMqtt("count_reset");
+                resetConfirm=menuOpen=false;displayShowMessage("COUNT RESET","0");
+            }else if(menuSelection==0){menuOpen=false;startCalibration();}
+            else if(menuSelection==1){menuOpen=false;networkView=true;networkOpenPortal();}
+            else resetConfirm=true;
+        }
+        return;
     }
-
-    btnIncLast = incNow;
-    btnDecLast = decNow;
+    if(buttons[2].clicked){menuOpen=true;menuSelection=0;networkView=false;return;}
+    if(buttons[0].clicked&&appCfg.count<UINT32_MAX){++appCfg.count;cfgSaveCount(appCfg.count);flushWaveformToMqtt("button_inc");}
+    if(buttons[1].clicked&&appCfg.count>0){--appCfg.count;cfgSaveCount(appCfg.count);flushWaveformToMqtt("button_dec");}
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -293,8 +247,7 @@ void setup() {
 
     Wire.begin(PIN_SDA, PIN_SCL);
 
-    pinMode(PIN_BTN_INC, INPUT_PULLUP);
-    pinMode(PIN_BTN_DEC, INPUT_PULLUP);
+    for(uint8_t pin:buttonPins)pinMode(pin,INPUT_PULLUP);
 
     displayInit();
     cfgLoad(appCfg);
@@ -304,21 +257,13 @@ void setup() {
     Serial.printf("[BOOT] Restored count from NVS: %lu\n", (unsigned long)appCfg.count);
 
     imuInit();
-    startWiFi();
-
+    // networkInit() starts WiFi, which brings up the LwIP TCP/IP stack. The web
+    // server and MQTT client both open sockets, so they must come AFTER this or
+    // server.begin() asserts ("tcpip_send_msg_wait_sem ... Invalid mbox").
+    networkInit();
     webServerInit(&appCfg);
-
-    if (wifiOk) {
-        mqttInit(appCfg.deviceId);
-        String ip = WiFi.localIP().toString();
-        displayShowCfgIP(ip.c_str());
-        Serial.printf("[WEB] Portal: http://%s\n", ip.c_str());
-        
-        // Start OTA listener
-        ArduinoOTA.setHostname(appCfg.deviceId);
-        ArduinoOTA.begin();
-    }
-
+    mqttInit(appCfg.deviceId);
+    mqttSetEnabled(appCfg.mqttEnabled);
     Serial.println("[BOOT] Ready.");
 }
 
@@ -326,12 +271,20 @@ void setup() {
 void loop() {
     uint32_t now = millis();
 
-    if (wifiOk) ArduinoOTA.handle();
+    networkLoop();
+    wifiOk=networkConnected();
+    bool portalNow=networkPortalActive();
+    if(portalNow&&!portalWasActive)networkView=true;
+    portalWasActive=portalNow;
+    mqttSetEnabled(appCfg.mqttEnabled);
+    if(wifiOk&&!otaStarted){ArduinoOTA.setHostname(appCfg.deviceId);ArduinoOTA.begin();otaStarted=true;}
+    if(wifiOk&&otaStarted)ArduinoOTA.handle();
 
     // ── IMU at fixed rate ──
     if (now - lastImuMs >= IMU_SAMPLE_MS) {
-        lastImuMs = now;
+        lastImuMs += IMU_SAMPLE_MS;
 
+        const bool calibrationSample = calibState != CALIB_IDLE;
         bool newVib  = false;
         bool counted = imuUpdate(appCfg.vib, appCfg.lastLockPeak, &newVib);
         vibActive    = newVib;
@@ -399,6 +352,8 @@ void loop() {
             appCfg.lastSpikeThr = spikeThreshold;
             
             appCfg.vib.stopThreshold = (appCfg.vib.threshold + cleanMax) / 2;
+            if (appCfg.vib.stopThreshold > 8000) appCfg.vib.stopThreshold = 8000;
+            if (appCfg.vib.stopThreshold < appCfg.vib.threshold) appCfg.vib.stopThreshold = appCfg.vib.threshold;
             
             cfgSave(appCfg);
 
@@ -609,7 +564,7 @@ void loop() {
                         
                         bool thrTooHigh = false;
                         for(int i=0; i<5; i++) {
-                            if (newStart > lows[i]) { thrTooHigh = true; break; }
+                            if (appCfg.vib.threshold > lows[i]) { thrTooHigh = true; break; }
                         }
                         
                         if (thrTooHigh) {
@@ -638,7 +593,7 @@ void loop() {
                         }
                         
                         displayShowMessage("CALIBRATION", "DONE");
-                        delay(1000);
+                        // Notification is timed by the display manager; keep sampling responsive.
                     }
                 }
             } else {
@@ -652,6 +607,7 @@ void loop() {
         }
 
         // NEW: Real-time Serial Plotting
+#ifdef SERIAL_PLOT_ENABLE
         Serial.print(">Magnitude:");
         Serial.print(imuGetMagnitude());
         Serial.print(",TempStart:");
@@ -660,16 +616,17 @@ void loop() {
         Serial.print(appCfg.vib.stopThreshold);
         Serial.print(",Active:");
         Serial.println(newVib ? (appCfg.vib.threshold * 1.2) : 0.0);
+#endif
 
-        if      (!vibActive && !counted) sewState = 0;
-        else if (vibActive)              sewState = 2;
-        if      (counted)                sewState = 0;
+        sewState = static_cast<uint8_t>(imuGetState());
 
-        if (counted) {
+        if (counted && !calibrationSample && appCfg.count < UINT32_MAX) {
             appCfg.count++;
             Serial.printf("[COUNT] %lu\n", (unsigned long)appCfg.count);
             cfgSaveCount(appCfg.count);
-            // Count publishes are now handled by interval and button triggers
+            // Publish auto-counts immediately so a power loss between now and the
+            // next interval tick does not drop the update from the broker.
+            flushWaveformToMqtt("auto_count");
         }
     }
 
@@ -679,7 +636,7 @@ void loop() {
     // ── MQTT periodic heartbeat ──
     if (wifiOk && appCfg.mqttEnabled) {
         if (now - lastMqttMs >= appCfg.mqttIntervalMs) {
-            lastMqttMs = now;
+            lastMqttMs += appCfg.mqttIntervalMs;
             if (calibState == CALIB_IDLE) flushWaveformToMqtt("interval_update");
         }
     }
@@ -695,17 +652,13 @@ void loop() {
         Serial.println("[MAIN] Portal config applied.");
     }
 
-    // ── WiFi watchdog ──
-    if (wifiOk && WiFi.status() != WL_CONNECTED) {
-        Serial.println("[WiFi] Lost — reconnecting...");
-        WiFi.reconnect();
-        displayShowError("WiFi lost", "Reconnecting...");
-        delay(3000);
-    }
-
     // ── Display update ────────────────────────────────────────────────────────
     if (now - lastDisplayMs >= 100) {
-        lastDisplayMs = now;
+        lastDisplayMs += 100;
+        String stationIP=networkStationIP(), apIP=networkPortalIP();
+        displayUpdateCount(appCfg.count);
+        displayUpdateMachine(static_cast<uint8_t>(imuGetState()),appCfg.lastCalibStatus);
+        displayUpdateNetwork(wifiOk,appCfg.mqttEnabled,mqttIsConnected(),stationIP.c_str(),networkPortalActive(),apIP.c_str());
         
         if (calibState != CALIB_IDLE) {
             if (calibWarningMs > 0 && (now - calibWarningMs < 2000)) {
@@ -718,9 +671,11 @@ void loop() {
                 displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, dispImuState, calibLockCount);
             }
         } else {
-            String ip = wifiOk ? WiFi.localIP().toString() : "offline";
-            displayShowRunning(appCfg.count, ip.c_str(), appCfg.mqttEnabled,
-                               wifiOk && mqttIsConnected(), vibActive, appCfg.lastCalibStatus);
+            if(menuOpen)displayShowMenu(menuSelection,resetConfirm);
+            else if(networkView&&networkPortalActive())displayShowPortal(WIFI_AP_NAME,apIP.c_str());
+            else if(networkView&&!wifiOk)displayShowConnecting("Saved network");
+            else displayShowRunning();
         }
+        displayRender();
     }
 }

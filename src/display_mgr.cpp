@@ -1,224 +1,127 @@
 #include "display_mgr.h"
 #include "config.h"
-#include <Wire.h>
+#include <SPI.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <Adafruit_ST7735.h>
+#include <cstring>
+#include <algorithm>
 
-static Adafruit_SSD1306 oled(OLED_WIDTH, OLED_HEIGHT, &Wire, -1);
-
-void displayInit() {
-    if (!oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
-        Serial.println("[OLED] Init failed");
-        return;
-    }
-    oled.clearDisplay();
-    oled.setTextColor(SSD1306_WHITE);
-    oled.setTextWrap(false);
-
-    // Splash
-    oled.setTextSize(1);
-    oled.setCursor(20, 10);
-    oled.println("Label Counter");
-    oled.setCursor(32, 24);
-    oled.println("v1.0  Idea8");
-    oled.drawRect(0, 0, 128, 64, SSD1306_WHITE);
-    oled.display();
-    delay(1500);
+namespace {
+constexpr int W=160, H=128;
+constexpr uint16_t BLACK=0x0000, WHITE=0xffff, GRAY=0x9cd3,
+                   GREEN=0x07e0, AMBER=0xfd20, RED=0xf800, LINE=0x4208;
+Adafruit_ST7735 tft(TFT_CS,TFT_DC,TFT_RST);
+GFXcanvas16 canvas(W,H);
+uint16_t previous[W*H];
+bool ready=false, first=true, notificationError=false;
+enum Mode { RUN, PORTAL, CONNECTING, CALIBRATION, MENU, MESSAGE, ERROR_SCREEN };
+Mode mode=RUN;
+uint32_t count=0, messageUntil=0;
+bool wifi=false, mqttEnabled=true, mqtt=false, portal=false, confirm=false;
+uint8_t machine=0, calStatus=0, calStage=0, captures=0, imu=0, locks=0, selection=0;
+uint16_t progress=0;
+char stationIP[20]="", portalIP[20]="", ap[33]="LabelCounter", msg1[40]="", msg2[40]="";
+void copy(char* out,size_t n,const char* in){snprintf(out,n,"%s",in?in:"");}
+void text(int x,int y,const char* s,uint16_t color=WHITE,uint8_t size=1){
+    canvas.setTextSize(size); canvas.setTextColor(color); canvas.setCursor(x,y); canvas.print(s);
 }
-
-void displayShowPortal(const char* apName, const char* apIP) {
-    oled.clearDisplay();
-    oled.setTextSize(1);
-
-    oled.setCursor(0, 0);
-    oled.println("-- WiFi Setup --");
-    oled.println();
-    oled.println("Connect to AP:");
-    oled.setTextSize(1);
-    oled.println(apName);
-    oled.println();
-    oled.println("Then open:");
-    oled.println(apIP);
-    oled.display();
+void center(int y,const char* s,uint16_t color=WHITE,uint8_t size=1){
+    int width=strlen(s)*6*size; text(std::max(0,(W-width)/2),y,s,color,size);
 }
-
-void displayShowConnecting(const char* ssid) {
-    oled.clearDisplay();
-    oled.setTextSize(1);
-    oled.setCursor(0, 0);
-    oled.println("Connecting to:");
-    oled.println(ssid);
-    oled.println();
-    oled.println("Please wait...");
-    oled.display();
+void header(const char* title,uint16_t color){
+    text(4,3,title,color);
+    text(4,17,wifi?"WiFi OK":"WiFi LOST",wifi?GREEN:RED);
+    const char* status=!mqttEnabled?"MQTT OFF":mqtt?"MQTT OK":"MQTT LOST";
+    text(94,17,status,!mqttEnabled?GRAY:mqtt?GREEN:RED);
+    canvas.drawFastHLine(4,29,152,LINE);
 }
-
-void displayShowRunning(uint32_t count, const char* ip,
-                        bool mqttEnabled, bool mqttOk, bool vibActive, uint8_t calibStatus) {
-    oled.clearDisplay();
-
-    // Big count
-    oled.setTextSize(3);
-    // centre the number
-    char buf[10];
-    snprintf(buf, sizeof(buf), "%lu", (unsigned long)count);
-    int16_t x1, y1; uint16_t w, h;
-    oled.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
-    oled.setCursor((OLED_WIDTH - w) / 2, 4);
-    oled.print(buf);
-
-    // Divider
-    oled.drawFastHLine(0, 36, 128, SSD1306_WHITE);
-
-    // Status row (IP)
-    oled.setTextSize(1);
-    oled.setCursor(0, 40);
-    oled.print(ip ? ip : "No IP");
-
-    // Bottom row layout: CAL | Sewing Bar | MQTT
-    
-    // 1. Calibration state (Left)
-    oled.setCursor(0, 54);
-    if (calibStatus == 1) {
-        oled.print("CAL:OK");
-    } else {
-        oled.print("CAL:BAD");
-    }
-
-    // 2. Sewing indication bar (Middle)
-    // Reduce width and place in middle (x=48, w=26)
-    if (vibActive) {
-        oled.fillRect(48, 54, 26, 8, SSD1306_WHITE);
-    } else {
-        oled.drawRect(48, 54, 26, 8, SSD1306_WHITE);
-    }
-
-    // 3. MQTT state (Right)
-    oled.setCursor(80, 54);
-    if (!mqttEnabled) {
-        oled.print("MQTT:OFF");
-    } else {
-        oled.print(mqttOk ? "MQTT:OK " : "MQTT:ON ");
-    }
-
-    oled.display();
+void footerIP(){
+    canvas.drawFastHLine(4,112,152,LINE);
+    char line[27];
+    if (portal) snprintf(line,sizeof(line),"AP %s",portalIP);
+    else if(wifi) snprintf(line,sizeof(line),"IP %s",stationIP);
+    else copy(line,sizeof(line),"WiFi reconnecting...");
+    center(118,line,portal?AMBER:GRAY);
 }
-
-void displayShowError(const char* line1, const char* line2) {
-    oled.clearDisplay();
-    oled.setTextSize(1);
-    oled.setCursor(0, 0);
-    oled.println("!! ERROR !!");
-    oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
-    oled.setCursor(0, 16);
-    oled.println(line1);
-    if (line2) {
-        oled.setCursor(0, 30);
-        oled.println(line2);
-    }
-    oled.display();
+const char* machineName(){
+    switch(machine){case 1:return "DETECTING";case 2:return "SEWING";case 3:return "CONFIRMING";default:return "IDLE";}
 }
-
-void displayShowMessage(const char* line1, const char* line2) {
-    oled.clearDisplay();
-    oled.setTextSize(1);
-    oled.setCursor(0, 0);
-    oled.println("== SYSTEM ==");
-    oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
-    oled.setCursor(0, 20);
-    oled.println(line1);
-    if (line2) {
-        oled.setCursor(0, 34);
-        oled.println(line2);
-    }
-    oled.display();
 }
-
-void displayShowCfgIP(const char* ip) {
-    // Small info strip at bottom without clearing rest of screen
-    oled.fillRect(0, 54, 128, 10, SSD1306_BLACK);
-    oled.setTextSize(1);
-    oled.setCursor(0, 54);
-    oled.print("CFG: ");
-    oled.print(ip);
-    oled.display();
+void displayInit(){
+    if(!canvas.getBuffer()){Serial.println("[TFT] Framebuffer allocation failed");return;}
+    SPI.begin(TFT_SCLK,-1,TFT_MOSI,TFT_CS);
+    tft.initR(TFT_TAB); tft.setRotation(TFT_ROTATION); tft.setSPISpeed(TFT_SPI_HZ);
+    canvas.setTextWrap(false); ready=true;
+    displayShowMessage("LABEL COUNTER","Idea8 - TFT edition");
+    displayRender();
 }
-
-void displayShowCalibration(uint8_t state, uint8_t ftCount, uint16_t progress, uint8_t imuState, uint8_t lockCount) {
-    oled.clearDisplay();
-    oled.setTextSize(1);
-    
-    // Header
-    oled.setCursor(0, 0);
-    oled.println("== CALIBRATION ==");
-    oled.drawFastHLine(0, 10, 128, SSD1306_WHITE);
-    
-    oled.setCursor(0, 20);
-    switch (state) {
-        case 1: // CALIB_SAMPLING
-            oled.println("Step 1: Noise Scan");
-            oled.println("Keep machine off.");
-            
-            // Draw loading bar (width 120, height 10)
-            oled.drawRect(4, 42, 120, 10, SSD1306_WHITE);
-            
-            if (progress > 0) {
-                int fillW = (progress * 120) / 150; // max samples is 150
-                if (fillW > 120) fillW = 120;
-                oled.fillRect(4, 42, fillW, 10, SSD1306_WHITE);
-            }
-            break;
-        case 3: // CALIB_LOCK_WAITING
-            oled.println("Step 2: Lock Scan");
-            if (imuState == 3) {
-                oled.println("CONFIRMING...");
-            } else {
-                oled.println("Trigger lock stitch");
-            }
-            oled.setCursor(0, 42);
-            oled.print("Count:");
-            oled.print(lockCount);
-            oled.print("/3, BTN:Skip");
-            break;
-        case 4: // CALIB_SEW_WAITING
-            oled.println("Step 3: First Sew");
-            if (imuState == 3) {
-                oled.setCursor(0, 32);
-                oled.println("CONFIRMING...");
-            } else {
-                oled.println("Sew a normal label");
-                oled.setCursor(0, 42);
-                oled.println("Press BTN to capture");
-            }
-            break;
-        case 5: // CALIB_FINE_TUNE
-            oled.println("Step 4: Fine Tune");
-            oled.setCursor(0, 32);
-            if (imuState == 3) {
-                oled.println("CONFIRMING...");
-            } else {
-                oled.print("Attempt ");
-                oled.print(ftCount);
-                oled.println("/5");
-                oled.setCursor(0, 42);
-                oled.println("INC:Capture, DEC:Down");
-            }
-            break;
-        case 6: // CALIB_SEW_DONE
-            oled.println("Processing Data...");
-            break;
-        case 7: // CALIB_SKIP_LOCK
-            oled.setCursor(0, 32);
-            oled.println("NO LOCK SOLENOID");
-            break;
-        default:
-            oled.println("Please Wait...");
-            break;
-    }
-    
-    // Footer hint for abort
-    oled.setCursor(0, 54);
-    oled.print("Press both BTNs:Abort");
-    
-    oled.display();
+void displayUpdateCount(uint32_t value){count=value;}
+void displayUpdateNetwork(bool w,bool enabled,bool connected,const char* ip,bool active,const char* apIP){
+    wifi=w; mqttEnabled=enabled; mqtt=w&&enabled&&connected; portal=active;
+    copy(stationIP,sizeof(stationIP),ip);copy(portalIP,sizeof(portalIP),apIP);
+}
+void displayUpdateMachine(uint8_t state,uint8_t status){machine=state;calStatus=status;}
+void displayShowRunning(){mode=RUN;}
+void displayShowPortal(const char* name,const char* ip){mode=PORTAL;copy(ap,sizeof(ap),name);copy(portalIP,sizeof(portalIP),ip);}
+void displayShowConnecting(const char* ssid){mode=CONNECTING;copy(msg1,sizeof(msg1),ssid);}
+void displayShowCalibration(uint8_t state,uint8_t ft,uint16_t p,uint8_t im,uint8_t lk){mode=CALIBRATION;calStage=state;captures=ft;progress=p;imu=im;locks=lk;}
+void displayShowMenu(uint8_t sel,bool reset){mode=MENU;selection=sel;confirm=reset;}
+void displayShowError(const char* l1,const char* l2){mode=ERROR_SCREEN;notificationError=true;copy(msg1,sizeof(msg1),l1);copy(msg2,sizeof(msg2),l2);messageUntil=millis()+1800;displayRender();}
+void displayShowMessage(const char* l1,const char* l2){mode=MESSAGE;notificationError=false;copy(msg1,sizeof(msg1),l1);copy(msg2,sizeof(msg2),l2);messageUntil=millis()+1200;displayRender();}
+void displayShowCfgIP(const char* ip){copy(stationIP,sizeof(stationIP),ip);}
+void displayRender(){
+    if(!ready)return;
+    canvas.fillScreen(BLACK);
+    // Timed notifications stay visible even when the loop requests another screen.
+    if(int32_t(messageUntil-millis())>0){
+        header(notificationError?"ERROR":"SYSTEM",notificationError?RED:AMBER);
+        center(49,msg1,WHITE);center(69,msg2,GRAY);footerIP();
+    }else if(mode==RUN){
+        header(machineName(),machine?AMBER:GREEN);text(4,36,"COUNT",GRAY);
+        char value[11];snprintf(value,sizeof(value),"%lu",(unsigned long)count);
+        uint8_t size=4;while(strlen(value)*6*size>152&&size>1)--size;
+        center(54,value,WHITE,size);
+        text(4,100,calStatus==1?"CAL OK":calStatus==2?"CAL ABORT":"CAL NEEDED",calStatus==1?GREEN:AMBER);
+        text(94,100,machineName(),machine?GREEN:GRAY);footerIP();
+    }else if(mode==PORTAL){
+        header("WI-FI SETUP",AMBER);center(39,"Connect to AP",GRAY);
+        // SSID may be up to 32 characters: clamp to a display-safe label.
+        char label[26];snprintf(label,sizeof(label),"%.25s",ap);center(54,label);
+        center(74,"Open browser",GRAY);center(89,portalIP,AMBER);
+        text(4,115,"BACK: count screen",GRAY);
+    }else if(mode==CONNECTING){
+        header("CONNECTING",AMBER);center(48,"Saved Wi-Fi network",WHITE);
+        center(67,"Counting remains active",GRAY);footerIP();
+    }else if(mode==MENU){
+        header(confirm?"RESET COUNT?":"MENU",AMBER);
+        if(confirm){center(47,"Set count to zero?");center(75,"SELECT: confirm",AMBER);}
+        else{const char* items[]={"Start calibration","Wi-Fi setup","Reset count"};
+            for(int i=0;i<3;i++){if(selection==i)canvas.fillRect(3,38+i*20,154,16,LINE);text(8,42+i*20,items[i],selection==i?GREEN:WHITE);}}
+        text(4,116,"SELECT: OK  BACK: cancel",GRAY);
+    }else if(mode==CALIBRATION){
+        header("CALIBRATION",AMBER);char line[27];
+        switch(calStage){
+        case 1:
+            text(4,39,"1 NOISE SCAN");text(4,57,"Keep machine off",GRAY);
+            canvas.drawRect(4,80,152,10,LINE);canvas.fillRect(5,81,std::min(150,int(progress))*150/150,8,AMBER);break;
+        case 3:
+            text(4,39,"2 LOCK SCAN");text(4,57,imu==3?"CONFIRMING...":"Trigger lock stitch",GRAY);
+            snprintf(line,sizeof(line),"%u of 3 detected",locks);text(4,77,line);text(4,96,"SELECT / +/-: skip",GRAY);break;
+        case 4:
+            text(4,39,"3 FIRST SEW");text(4,57,"Sew one label",GRAY);
+            text(4,77,imu==3?"CONFIRMING...":"Auto-detecting...",GREEN);text(4,96,"SELECT / +: capture",GRAY);break;
+        case 5:
+            text(4,39,"4 FINE TUNE");snprintf(line,sizeof(line),"%u of 5 captured",captures);text(4,57,line);
+            text(4,77,imu==3?"CONFIRMING...":"Sew next label",GREEN);text(4,96,"+:capture  -:undo",GRAY);break;
+        case 6:text(4,49,"Processing data...",AMBER);break;
+        case 7:text(4,49,"No lock solenoid",AMBER);text(4,69,"Skipping lock scan",GRAY);break;
+        default:text(4,49,"Please wait...",GRAY);break;
+        }
+        text(4,116,"Hold BACK 2s: abort",GRAY);
+    }else{header("SYSTEM",AMBER);center(52,msg1);center(73,msg2,GRAY);}
+    // Send only changed contiguous scanlines. No clear-screen flash.
+    uint16_t* pixels=canvas.getBuffer();int top=H,bottom=-1;
+    for(int y=0;y<H;y++)if(first||memcmp(pixels+y*W,previous+y*W,W*2)!=0){top=std::min(top,y);bottom=y;}
+    if(bottom>=top){tft.drawRGBBitmap(0,top,pixels+top*W,W,bottom-top+1);memcpy(previous+top*W,pixels+top*W,(bottom-top+1)*W*2);}
+    first=false;
 }

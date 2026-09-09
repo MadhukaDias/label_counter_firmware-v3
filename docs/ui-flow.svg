@@ -1,0 +1,282 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1660 1480" font-family="'Segoe UI',Roboto,Arial,sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6675"/>
+    </marker>
+    <style>
+      .t   { fill:#e6ecf5; font-size:14px; font-weight:700; }
+      .s   { fill:#9aa4b2; font-size:11.5px; }
+      .s2  { fill:#7f8a9a; font-size:10.5px; }
+      .box { fill:#161a1f; stroke:#2a2f38; stroke-width:1.5; }
+      .hub { fill:#12211c; stroke:#00e5a0; stroke-width:2; }
+      .amb { fill:#20170f; stroke:#ff6b35; stroke-width:1.5; }
+      .net { fill:#141b20; stroke:#3a5566; stroke-width:1.5; }
+      .edge   { stroke:#5b6675; stroke-width:1.6; fill:none; }
+      .edged  { stroke:#5b6675; stroke-width:1.4; fill:none; stroke-dasharray:5 4; }
+      .el  { fill:#00e5a0; font-size:10.5px; font-weight:700; }
+      .ela { fill:#ff8a5c; font-size:10.5px; font-weight:700; }
+      .cl  { fill:none; stroke:#2a2f38; stroke-width:1.3; stroke-dasharray:3 6; }
+      .clt { fill:#5a6475; font-size:12px; font-weight:700; letter-spacing:2px; }
+    </style>
+  </defs>
+
+  <rect width="1660" height="1480" fill="#0d0f12"/>
+  <text x="30" y="30" fill="#e6ecf5" font-size="19" font-weight="700">Label Counter — running UI flow</text>
+  <text x="30" y="50" fill="#7f8a9a" font-size="12">On-device 128×160 TFT screens + button navigation, plus the browser dashboard. ST7735 landscape 160×128, four buttons.</text>
+
+  <!-- legend -->
+  <g transform="translate(1358,20)">
+    <rect class="box" width="292" height="92" rx="8"/>
+    <text x="14" y="22" class="s"><tspan fill="#00e5a0" font-weight="700">— green</tspan>  button press (INC / DEC / SELECT / BACK)</text>
+    <text x="14" y="44" class="s"><tspan fill="#ff8a5c" font-weight="700">— orange</tspan>  automatic / sensor / system</text>
+    <text x="14" y="66" class="s"><tspan fill="#9aa4b2" font-weight="700">– – dashed</tspan>  network / HTTP transition</text>
+    <text x="14" y="84" class="s2">INC=GPIO4  DEC=GPIO5  SELECT=GPIO6  BACK=GPIO7</text>
+  </g>
+
+  <!-- ============ NETWORK cluster ============ -->
+  <rect class="cl" x="28" y="150" width="360" height="500" rx="14"/>
+  <text x="44" y="172" class="clt">NETWORK</text>
+
+  <g transform="translate(54,190)">
+    <rect class="net" width="304" height="56" rx="9"/>
+    <text x="14" y="22" class="t">Auto-connect</text>
+    <text x="14" y="40" class="s">Boot: WiFi.begin() saved creds · retry every 30 s</text>
+  </g>
+
+  <g transform="translate(54,288)">
+    <rect class="net" width="304" height="66" rx="9"/>
+    <text x="14" y="22" class="t">CONNECTING screen</text>
+    <text x="14" y="40" class="s">"Saved Wi-Fi network"</text>
+    <text x="14" y="56" class="s2">counting stays active · shown on BACK toggle</text>
+  </g>
+
+  <g transform="translate(54,396)">
+    <rect class="net" width="304" height="104" rx="9"/>
+    <text x="14" y="22" class="t">WI-FI SETUP  (portal)</text>
+    <text x="14" y="42" class="s">AP: LabelCounter (open)</text>
+    <text x="14" y="60" class="s">browser → 192.168.4.1</text>
+    <text x="14" y="80" class="s2">enter creds · BACK: back to count screen</text>
+    <text x="14" y="96" class="s2">dashboard paused while portal is up</text>
+  </g>
+
+  <g transform="translate(54,540)">
+    <rect class="net" width="304" height="52" rx="9"/>
+    <text x="14" y="21" class="s">No connection for 10 s →</text>
+    <text x="14" y="39" class="s">portal opens automatically</text>
+  </g>
+
+  <!-- ============ CENTER column ============ -->
+  <g transform="translate(470,64)">
+    <rect class="box" width="300" height="40" rx="9"/>
+    <text x="150" y="25" class="t" text-anchor="middle">Power on / Reset</text>
+  </g>
+
+  <g transform="translate(438,136)">
+    <rect class="box" width="364" height="70" rx="9"/>
+    <text x="182" y="24" class="t" text-anchor="middle">Boot splash  (1.2 s)</text>
+    <text x="182" y="42" class="s" text-anchor="middle">"LABEL COUNTER — Idea8 TFT edition"</text>
+    <text x="182" y="60" class="s2" text-anchor="middle">setup(): display · config(NVS) · IMU · Wi-Fi · web · MQTT</text>
+  </g>
+
+  <g transform="translate(426,248)">
+    <rect class="hub" width="388" height="156" rx="10"/>
+    <text x="194" y="26" class="t" text-anchor="middle" fill="#00e5a0">RUNNING screen  (home)</text>
+    <text x="194" y="52" text-anchor="middle" fill="#e6ecf5" font-size="22" font-weight="700">COUNT 1234</text>
+    <text x="194" y="76" class="s" text-anchor="middle">Detector: IDLE · DETECTING · SEWING · CONFIRMING</text>
+    <text x="194" y="96" class="s" text-anchor="middle">CAL OK / CAL NEEDED / CAL ABORT</text>
+    <text x="194" y="116" class="s" text-anchor="middle">Wi-Fi · MQTT status · IP footer</text>
+    <text x="194" y="140" class="s2" text-anchor="middle">INC +1  ·  DEC −1 (min 0)  ·  IMU sewing cycle → +1 automatically</text>
+  </g>
+
+  <g transform="translate(443,470)">
+    <rect class="amb" width="354" height="150" rx="9"/>
+    <text x="177" y="24" class="t" text-anchor="middle">MENU   (SELECT opens)</text>
+    <text x="20" y="50" class="s">1 · Start calibration</text>
+    <text x="20" y="72" class="s">2 · Wi-Fi setup</text>
+    <text x="20" y="94" class="s">3 · Reset count</text>
+    <text x="177" y="122" class="s2" text-anchor="middle">INC prev · DEC next</text>
+    <text x="177" y="140" class="s2" text-anchor="middle">SELECT choose · BACK exit</text>
+  </g>
+
+  <g transform="translate(455,668)">
+    <rect class="amb" width="330" height="64" rx="9"/>
+    <text x="165" y="24" class="t" text-anchor="middle">RESET COUNT?</text>
+    <text x="165" y="45" class="s" text-anchor="middle">SELECT → count = 0    ·    BACK → cancel</text>
+  </g>
+
+  <g transform="translate(443,772)">
+    <rect class="box" width="354" height="78" rx="9"/>
+    <text x="177" y="22" class="t" text-anchor="middle">Timed notifications</text>
+    <text x="177" y="42" class="s" text-anchor="middle">SYSTEM / ERROR banner over any screen (1.2–1.8 s)</text>
+    <text x="177" y="62" class="s2" text-anchor="middle">"COUNT RESET" · "CALIBRATION MODE / ABORTED / DONE" · "WARNING"</text>
+  </g>
+
+  <!-- ============ CALIBRATION cluster ============ -->
+  <rect class="cl" x="898" y="150" width="748" height="930" rx="14"/>
+  <text x="916" y="172" class="clt">CALIBRATION  (auto-detected stage machine)</text>
+
+  <g transform="translate(1010,196)">
+    <rect class="amb" width="404" height="46" rx="9"/>
+    <text x="202" y="28" class="t" text-anchor="middle">startCalibration()</text>
+  </g>
+  <g transform="translate(1010,282)">
+    <rect class="amb" width="404" height="60" rx="9"/>
+    <text x="16" y="24" class="t">1 · NOISE SCAN</text>
+    <text x="16" y="44" class="s">"Keep machine off" · ~3 s progress bar</text>
+  </g>
+  <g transform="translate(1440,282)">
+    <rect class="net" width="188" height="60" rx="9"/>
+    <text x="14" y="23" class="s">7 · No lock solenoid</text>
+    <text x="14" y="41" class="s2">skips lock scan</text>
+  </g>
+  <g transform="translate(1010,384)">
+    <rect class="amb" width="404" height="74" rx="9"/>
+    <text x="16" y="24" class="t">2 · LOCK SCAN</text>
+    <text x="16" y="43" class="s">"Trigger lock stitch" · "N of 3 detected"</text>
+    <text x="16" y="61" class="s2">SELECT or +/− : skip this stage</text>
+  </g>
+  <g transform="translate(1010,498)">
+    <rect class="amb" width="404" height="64" rx="9"/>
+    <text x="16" y="24" class="t">3 · FIRST SEW</text>
+    <text x="16" y="43" class="s">"Sew one label" · auto-detects end</text>
+    <text x="16" y="59" class="s2">SELECT or + : capture manually</text>
+  </g>
+  <g transform="translate(1010,600)">
+    <rect class="amb" width="404" height="78" rx="9"/>
+    <text x="16" y="24" class="t">4 · FINE TUNE</text>
+    <text x="16" y="43" class="s">"N of 5 captured" · "Sew next label"</text>
+    <text x="16" y="61" class="s2">+ capture · − undo last   (repeats until 5)</text>
+  </g>
+  <g transform="translate(1010,716)">
+    <rect class="amb" width="404" height="44" rx="9"/>
+    <text x="16" y="27" class="t">Processing data…</text>
+  </g>
+  <g transform="translate(1010,792)">
+    <rect class="box" width="404" height="46" rx="9"/>
+    <text x="16" y="28" class="s"><tspan fill="#00e5a0" font-weight="700">"CALIBRATION DONE"</tspan>  → RUNNING (CAL OK)</text>
+  </g>
+  <g transform="translate(1010,876)">
+    <rect class="box" width="404" height="60" rx="9"/>
+    <text x="16" y="24" class="s">Abort: hold BACK 2 s  ·  INC+DEC chord 3 s</text>
+    <text x="16" y="44" class="s2">"CALIBRATION ABORTED" → RUNNING (CAL ABORT)</text>
+  </g>
+  <g transform="translate(1010,968)">
+    <rect class="box" width="404" height="56" rx="9"/>
+    <text x="16" y="23" class="s">Invalid data → "WARNING Invalid Data!" (2 s)</text>
+    <text x="16" y="42" class="s2">stage retries automatically</text>
+  </g>
+
+  <!-- ============ WEB DASHBOARD band ============ -->
+  <rect class="cl" x="28" y="1150" width="1618" height="336" rx="14"/>
+  <text x="46" y="1172" class="clt">WEB DASHBOARD   ·   browser → http://&lt;device-ip&gt;/ (port 80, when Wi-Fi connected)</text>
+
+  <g transform="translate(60,1196)">
+    <rect class="net" width="372" height="150" rx="9"/>
+    <text x="16" y="26" class="t">Live status</text>
+    <text x="16" y="50" class="s">polls /api/status every 1 s</text>
+    <text x="16" y="70" class="s">count · vibration magnitude · state</text>
+    <text x="16" y="90" class="s">MQTT: OK / LOST / OFF</text>
+    <text x="16" y="114" class="s2">loadConfig() → /api/config on open</text>
+    <text x="16" y="132" class="s2">calibration modal auto-opens if device is calibrating</text>
+  </g>
+  <g transform="translate(462,1196)">
+    <rect class="net" width="392" height="150" rx="9"/>
+    <text x="16" y="26" class="t">Config form  (lock / unlock)</text>
+    <text x="16" y="50" class="s">start / stop threshold · min duration</text>
+    <text x="16" y="70" class="s">silence window · MQTT interval</text>
+    <text x="16" y="90" class="s">lock-solenoid toggle</text>
+    <text x="16" y="114" class="s2">Save All → POST /api/config  (re-locks)</text>
+    <text x="16" y="132" class="s2">Reset Defaults → POST /api/reset-config</text>
+  </g>
+  <g transform="translate(884,1196)">
+    <rect class="net" width="300" height="150" rx="9"/>
+    <text x="16" y="26" class="t">Quick actions</text>
+    <text x="16" y="52" class="s">tap Count card → confirm →</text>
+    <text x="16" y="70" class="s2">POST /api/reset-count</text>
+    <text x="16" y="96" class="s">tap MQTT card →</text>
+    <text x="16" y="114" class="s2">POST /api/mqtt_toggle</text>
+  </g>
+  <g transform="translate(1214,1196)">
+    <rect class="net" width="392" height="150" rx="9"/>
+    <text x="16" y="26" class="t">Calibration modal</text>
+    <text x="16" y="50" class="s">Start → POST /api/calibrate</text>
+    <text x="16" y="70" class="s">polls /api/calib_status (300 ms)</text>
+    <text x="16" y="92" class="s">Step 1 noise → 2 solenoid → 3 sew</text>
+    <text x="16" y="110" class="s">→ 4 fine tune → Complete</text>
+    <text x="16" y="132" class="s2">Skip / Abort buttons → /api/calib_skip · /api/calib_abort</text>
+  </g>
+
+  <!-- ============ EDGES ============ -->
+  <!-- center chain -->
+  <path class="edge" d="M620,104 L620,136" marker-end="url(#a)"/>
+  <path class="edge" d="M620,206 L620,248" marker-end="url(#a)"/>
+  <path class="edge" d="M620,404 L620,470" marker-end="url(#a)"/>
+  <text x="628" y="440" class="el">SELECT</text>
+  <path class="edge" d="M620,620 L620,668" marker-end="url(#a)"/>
+  <text x="628" y="646" class="el">"Reset count"</text>
+
+  <!-- MENU back to RUN -->
+  <path class="edge" d="M443,505 C 388,486 388,352 424,338" marker-end="url(#a)"/>
+  <text x="392" y="430" class="el" text-anchor="middle">BACK</text>
+
+  <!-- RESET back to RUN -->
+  <path class="edge" d="M785,686 C 858,648 858,352 816,320" marker-end="url(#a)"/>
+  <text x="836" y="470" class="el" text-anchor="middle">SELECT ✓</text>
+  <text x="836" y="484" class="el" text-anchor="middle">BACK ✗</text>
+
+  <!-- into calibration -->
+  <path class="edge" d="M814,300 C 910,276 940,232 1010,222" marker-end="url(#a)"/>
+  <text x="905" y="262" class="ela" text-anchor="middle">menu "Start calibration"</text>
+  <text x="905" y="276" class="ela" text-anchor="middle">· hold INC+DEC 2 s · web</text>
+
+  <!-- calibration chain -->
+  <path class="edge" d="M1212,242 L1212,282" marker-end="url(#a)"/>
+  <path class="edge" d="M1212,342 L1212,384" marker-end="url(#a)"/>
+  <text x="1220" y="368" class="s2">lock solenoid configured</text>
+  <path class="edge" d="M1414,312 L1440,312" marker-end="url(#a)"/>
+  <text x="1300" y="304" class="s2">no solenoid</text>
+  <path class="edge" d="M1534,342 C 1534,430 1470,470 1416,500" marker-end="url(#a)"/>
+  <path class="edge" d="M1212,458 L1212,498" marker-end="url(#a)"/>
+  <text x="1220" y="484" class="s2">3 hits or skip</text>
+  <path class="edge" d="M1212,562 L1212,600" marker-end="url(#a)"/>
+  <path class="edge" d="M1416,624 C 1452,614 1452,662 1416,652" marker-end="url(#a)"/>
+  <text x="1424" y="642" class="s2">repeat ×5</text>
+  <path class="edge" d="M1212,678 L1212,716" marker-end="url(#a)"/>
+  <text x="1220" y="704" class="s2">5 captured</text>
+  <path class="edge" d="M1212,760 L1212,792" marker-end="url(#a)"/>
+  <!-- warn retry -->
+  <path class="edged" d="M1010,996 C 940,980 940,440 1010,420" marker-end="url(#a)"/>
+  <text x="946" y="700" class="s2" transform="rotate(-90 946 700)">invalid data · retry stage</text>
+
+  <!-- calibration exit back to RUN -->
+  <path class="edge" d="M1010,812 C 880,860 838,470 816,332" marker-end="url(#a)"/>
+  <text x="890" y="600" class="ela" text-anchor="middle" transform="rotate(-84 890 600)">exit → RUNNING</text>
+  <path class="edge" d="M1010,905 C 900,940 858,470 820,336" marker-end="url(#a)"/>
+
+  <!-- network edges -->
+  <path class="edge" d="M438,150 C 330,150 250,168 206,188" marker-end="url(#a)"/>
+  <text x="300" y="140" class="ela" text-anchor="middle">networkInit()</text>
+
+  <path class="edge" d="M206,246 L206,288" marker-end="url(#a)"/>
+  <path class="edge" d="M110,246 C 84,300 84,352 100,396" marker-end="url(#a)"/>
+  <text x="36" y="376" class="ela">10 s / menu</text>
+  <path class="edged" d="M206,500 L206,540" marker-end="url(#a)"/>
+
+  <!-- RUN toggles network view -->
+  <path class="edge" d="M426,366 C 402,360 392,346 372,332" marker-end="url(#a)"/>
+  <text x="356" y="454" class="el" text-anchor="middle">BACK: toggle network view</text>
+
+  <!-- portal / connecting back to RUN -->
+  <path class="edge" d="M358,410 C 410,398 410,344 424,332" marker-end="url(#a)"/>
+  <text x="392" y="360" class="s2">creds saved</text>
+  <path class="edged" d="M358,318 C 400,312 404,326 424,332" marker-end="url(#a)"/>
+  <text x="392" y="304" class="s2">connects → IP</text>
+
+  <!-- dashboard link -->
+  <path class="edged" d="M206,650 L206,1150" marker-end="url(#a)"/>
+  <text x="214" y="900" class="s2">device IP → open dashboard in browser</text>
+
+  <!-- web calib modal ties to device calibration -->
+  <path class="edged" d="M1410,1196 C 1410,1120 1300,1090 1240,1030" marker-end="url(#a)"/>
+  <text x="1360" y="1120" class="s2" text-anchor="middle">drives the same stage machine</text>
+</svg>

@@ -35,56 +35,156 @@ static uint32_t stateEnterMs = 0;
 
 // ── ADXL345 low-level I2C ────────────────────────────────────────────────────
 
+// ADXL345 I2C address is strapped by the SDO/ALT-ADDRESS pin: low → 0x53,
+// high → 0x1D. At init we probe both and remember whichever one answers, so a
+// mis-strapped or re-wired module still works without a rebuild.
+static uint8_t adxlAddr = ADXL_ADDRESS;
+static const uint8_t ADXL_ADDRESSES[] = {0x53, 0x1D};
+
 static uint8_t adxlWrite8(uint8_t reg, uint8_t val) {
-    Wire.beginTransmission(ADXL_ADDRESS);
+    Wire.beginTransmission(adxlAddr);
     Wire.write(reg);
     Wire.write(val);
     return Wire.endTransmission();
 }
 
-static uint8_t adxlRead8(uint8_t reg) {
-    Wire.beginTransmission(ADXL_ADDRESS);
+static bool adxlRead8(uint8_t reg, uint8_t& out) {
+    Wire.beginTransmission(adxlAddr);
     Wire.write(reg);
-    Wire.endTransmission(false);   // repeated start
-    Wire.requestFrom((uint8_t)ADXL_ADDRESS, (uint8_t)1);
-    return Wire.available() ? Wire.read() : 0;
+    if (Wire.endTransmission(false) != 0) return false;   // repeated start
+    if (Wire.requestFrom((uint8_t)adxlAddr, (uint8_t)1) != 1) return false;
+    out = Wire.read();
+    return true;
 }
 
-static bool adxlBegin() {
-    uint8_t id = adxlRead8(ADXL_REG_DEVID);
-    if (id != ADXL_DEVID_EXPECTED) {
-        Serial.printf("[IMU] ADXL345 not found! DEVID=0x%02X (expected 0x%02X)\n",
-                      id, ADXL_DEVID_EXPECTED);
-        return false;
-    }
-
-    adxlWrite8(ADXL_REG_DATA_FORMAT, ADXL_DATA_FORMAT_FULLRES_2G);
-    adxlWrite8(ADXL_REG_BW_RATE, ADXL_BW_RATE);
-    adxlWrite8(ADXL_REG_POWER_CTL, ADXL_POWER_CTL_MEASURE);  // exit standby last
+// Apply the sensor register config. Returns false if any I2C step NACKs, so a
+// bus hiccup cannot leave the part in a half-configured (standby) state.
+static bool adxlConfigure() {
+    if (adxlWrite8(ADXL_REG_DATA_FORMAT, ADXL_DATA_FORMAT_FULLRES_2G) != 0) return false;
+    if (adxlWrite8(ADXL_REG_BW_RATE, ADXL_BW_RATE) != 0) return false;
+    if (adxlWrite8(ADXL_REG_POWER_CTL, ADXL_POWER_CTL_MEASURE) != 0) return false;  // exit standby last
     delay(10);
     return true;
 }
 
+static bool adxlProbe(uint8_t addr) {
+    adxlAddr = addr;
+    uint8_t id = 0;
+    return adxlRead8(ADXL_REG_DEVID, id) && id == ADXL_DEVID_EXPECTED;
+}
+
+static bool adxlBegin() {
+    uint8_t id = 0;
+    if (!adxlRead8(ADXL_REG_DEVID, id) || id != ADXL_DEVID_EXPECTED) {
+        Serial.printf("[IMU] ADXL345 not ready! DEVID=0x%02X (expected 0x%02X)\n",
+                      id, ADXL_DEVID_EXPECTED);
+        return false;
+    }
+    if (!adxlConfigure()) {
+        Serial.println("[IMU] ADXL345 NACK during register config");
+        return false;
+    }
+    return true;
+}
+
+// ── Presence watchdog ─────────────────────────────────────────────────────────
+// ADXL345 powers up in standby until POWER_CTL is written. If the bus or the
+// sensor is slow to come up at boot (other device on the bus, marginal pull-ups),
+// the first init fails and the sensor stays unconfigured forever — that is the
+// "works sometimes, sometimes not" failure. So the watchdog not only checks the
+// DEVID, it also RE-APPLIES the full config and re-seeds the rolling baseline
+// when the part reconnects or was never configured.
+static bool adxlPresent = false;
+static uint32_t lastIdcCheck = 0;
+static uint32_t consecutiveBusErrors = 0;
+
+static bool isAdxlBusAlive() {
+    uint8_t id = 0;
+    return adxlRead8(ADXL_REG_DEVID, id) && id == ADXL_DEVID_EXPECTED;
+}
+
+static int32_t lastGoodX = 0, lastGoodY = 0, lastGoodZ = 0;
+static void readAxes(bool& ok, int32_t& ax, int32_t& ay, int32_t& az);
+static void refreshBaseline();
+
+static void checkSensorPresent() {
+    uint32_t now = millis();
+    uint32_t wait = adxlPresent ? 2000 : 200;   // fast re-try while absent
+    if (now - lastIdcCheck < wait) return;
+    lastIdcCheck = now;
+
+    if (adxlPresent) {
+        if (!isAdxlBusAlive()) {
+            adxlPresent = false;
+            consecutiveBusErrors = 0;
+            Serial.println("[IMU] ADXL345 LOST (check wiring/pull-ups)");
+        }
+    } else {
+        // Re-probe both possible addresses before re-init: the module may have
+        // been re-seated or strapped differently while the bus was down.
+        for (uint8_t a : ADXL_ADDRESSES) {
+            adxlAddr = a;
+            if (adxlBegin()) {
+                adxlPresent = true;
+                Serial.printf("[IMU] ADXL345 reconnected at 0x%02X; reconfiguring\n", adxlAddr);
+                // Re-seed the rolling baseline so the first post-reconnect samples
+                // are not read against stale 0-average buffers (would fake a huge
+                // magnitude).
+                refreshBaseline();
+                Serial.println("[IMU] ADXL345 baseline refreshed");
+                break;
+            }
+        }
+    }
+}
+
+static void refreshBaseline() {
+    // Device must be still. Rolling buffers are re-seeded so the first readings
+    // after a reconnect are not mistaken for a vibration burst.
+    int64_t sx = 0, sy = 0, sz = 0;
+    int okSamples = 0;
+    for (int i = 0; i < 80; i++) {
+        int32_t ax, ay, az;
+        bool ok;
+        readAxes(ok, ax, ay, az);
+        if (ok) { sx += ax; sy += ay; sz += az; okSamples++; }
+        delay(10);
+    }
+    if (okSamples == 0) { okSamples = 1; }
+    baseX = (int32_t)(sx / okSamples);
+    baseY = (int32_t)(sy / okSamples);
+    baseZ = (int32_t)(sz / okSamples);
+    for (int i = 0; i < ROLL_AVG_SAMPLES; i++) {
+        bufX[i] = baseX; bufY[i] = baseY; bufZ[i] = baseZ;
+    }
+    lastGoodX = baseX; lastGoodY = baseY; lastGoodZ = baseZ;
+}
+
+bool imuSensorPresent() { return adxlPresent; }
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-static void readAxes(int32_t& ax, int32_t& ay, int32_t& az) {
-    Wire.beginTransmission(ADXL_ADDRESS);
+static void readAxes(bool& ok, int32_t& ax, int32_t& ay, int32_t& az) {
+    Wire.beginTransmission(adxlAddr);
     Wire.write(ADXL_REG_DATAX0);
-    Wire.endTransmission(false);
-    Wire.requestFrom((uint8_t)ADXL_ADDRESS, (uint8_t)6);
+    if (Wire.endTransmission(false) != 0) { ok = false; return; }
+    // requestFrom returns the actual number of bytes; a partial/interrupted
+    // transfer must NOT be parsed into garbage axis values (a single bad read
+    // can fake a huge vibration spike and miscount a stitch).
+    uint8_t got = Wire.requestFrom((uint8_t)adxlAddr, (uint8_t)6);
+    if (got < 6) { ok = false; return; }
 
-    uint8_t b[6] = {0};
-    for (int i = 0; i < 6 && Wire.available(); i++) b[i] = Wire.read();
+    uint8_t b[6];
+    for (int i = 0; i < 6; i++) b[i] = Wire.read();
 
     int16_t rx = (int16_t)((b[1] << 8) | b[0]);
     int16_t ry = (int16_t)((b[3] << 8) | b[2]);
     int16_t rz = (int16_t)((b[5] << 8) | b[4]);
 
-    // Gain-compensated to keep raw-count scale comparable to the old MPU-6050
-    // readings (see ADXL_MAG_GAIN in config.h).
-    ax = (int32_t)rx * ADXL_MAG_GAIN;
-    ay = (int32_t)ry * ADXL_MAG_GAIN;
-    az = (int32_t)rz * ADXL_MAG_GAIN;
+    lastGoodX = ax = (int32_t)rx * ADXL_MAG_GAIN;
+    lastGoodY = ay = (int32_t)ry * ADXL_MAG_GAIN;
+    lastGoodZ = az = (int32_t)rz * ADXL_MAG_GAIN;
+    ok = true;
 }
 
 // Rolling median per axis → prevents single-sample massive spikes from stretching into 160ms pulses
@@ -117,32 +217,39 @@ static int32_t vibrMagnitude(int32_t ax, int32_t ay, int32_t az, int32_t avgX, i
     int64_t dx = ax - avgX;
     int64_t dy = ay - avgY;
     int64_t dz = az - avgZ;
-    return (int32_t)sqrt((float)(dx*dx + dy*dy + dz*dz));
+    return (int32_t)sqrt((double)(dx*dx + dy*dy + dz*dz));
 }
 
 // ── public ────────────────────────────────────────────────────────────────────
 
 void imuInit() {
-    if (!adxlBegin()) return;
+    // Hard timeout so a hung/stretched bus cannot block the loop indefinitely.
+    // Also enforce a minimum bus frequency: ESP32 Wire defaults to 100 kHz.
+    Wire.setTimeOut(50);
 
-    // Capture baseline — device must be stationary
+    // Resolve which address the module is strapped to (SDO low → 0x53, high → 0x1D).
+    for (uint8_t a : ADXL_ADDRESSES) {
+        if (adxlProbe(a)) {
+            Serial.printf("[IMU] ADXL345 found at 0x%02X\n", adxlAddr);
+            break;
+        }
+    }
+
+    // Retry init for a few seconds: ADXL345 may power up late, especially when
+    // another I2C device shares the bus and the first DEVID read races power-on.
+    adxlPresent = false;
+    for (int attempt = 0; attempt < 5; attempt++) {
+        if (adxlBegin()) { adxlPresent = true; break; }
+        Serial.println("[IMU] Init failed, retrying...");
+        delay(200);
+    }
+    if (!adxlPresent) {
+        Serial.println("[IMU] ADXL345 not ready; will keep retrying in background");
+        return;
+    }
+
     Serial.println("[IMU] Calibrating baseline (keep device still)...");
-    delay(300);
-    int64_t sx = 0, sy = 0, sz = 0;
-    for (int i = 0; i < 80; i++) {
-        int32_t ax, ay, az;
-        readAxes(ax, ay, az);
-        sx += ax; sy += ay; sz += az;
-        delay(10);
-    }
-    baseX = (int32_t)(sx / 80);
-    baseY = (int32_t)(sy / 80);
-    baseZ = (int32_t)(sz / 80);
-
-    // Pre-fill rolling buffers with baseline so first reads are stable
-    for (int i = 0; i < ROLL_AVG_SAMPLES; i++) {
-        bufX[i] = baseX; bufY[i] = baseY; bufZ[i] = baseZ;
-    }
+    refreshBaseline();
     Serial.printf("[IMU] Baseline: X=%ld Y=%ld Z=%ld\n",
                   (long)baseX, (long)baseY, (long)baseZ);
 }
@@ -151,8 +258,29 @@ static int32_t prevMag = 0;
 static uint32_t ignoreUntilMs = 0;
 
 bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut) {
+    checkSensorPresent();
+
     int32_t ax, ay, az;
-    readAxes(ax, ay, az);
+    bool readOk = false;
+    if (adxlPresent) {
+        readAxes(readOk, ax, ay, az);
+        if (!readOk) {
+            // Bus hiccup (NACK / partial transfer). Use the last-good sample so
+            // one bad read cannot corrupt the magnitude or miscount a stitch.
+            consecutiveBusErrors++;
+            ax = lastGoodX; ay = lastGoodY; az = lastGoodZ;
+            if (consecutiveBusErrors >= 5) {
+                adxlPresent = false;
+                lastIdcCheck = 0;      // force the watchdog to retry on the next tick
+                Serial.printf("[IMU] %lu consecutive I2C errors; re-initializing\n",
+                              (unsigned long)consecutiveBusErrors);
+            }
+        } else {
+            consecutiveBusErrors = 0;
+        }
+    } else {
+        ax = lastGoodX; ay = lastGoodY; az = lastGoodZ;
+    }
 
     int32_t avgX, avgY, avgZ;
     rollingAvgAxes(ax, ay, az, avgX, avgY, avgZ);

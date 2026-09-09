@@ -5,10 +5,13 @@
 #include <ArduinoJson.h>
 
 static WebServer server(80);
+static bool serverPaused=false;
 static AppConfig* _cfg     = nullptr;
-static bool _updated       = false;
-static bool _mqttOk        = false;
-static bool _vibActive     = false;
+// Cross-task visibility (web handlers vs main loop): keep volatile so a later
+// move of the server to its own task cannot introduce stale reads.
+static volatile bool _updated       = false;
+static volatile bool _mqttOk        = false;
+static volatile bool _vibActive     = false;
 
 void webServerSetMqttOk(bool ok)    { _mqttOk   = ok; }
 void webServerSetVibActive(bool va) { _vibActive = va; }
@@ -151,7 +154,7 @@ button:disabled:active, input:disabled:active { transform: none !important; back
     <!-- MQTT Interval moved to STATE section -->
     <div class="fg" style="margin-bottom:28px;">
       <div class="fhdr"><span class="fname">MQTT Publish Interval</span><span class="funit">seconds</span></div>
-      <div class="fdesc">How often to push count + status to MQTT broker. A count event always publishes immediately regardless of this interval.</div>
+      <div class="fdesc">How often to push count + status to MQTT broker. Automatic counts are published on this interval. Button corrections publish immediately when connected.</div>
       <div class="srow">
         <input type="range" id="s-mqi" min="1" max="30" step="1">
         <input type="number" id="n-mqi" min="1" max="30" step="1" readonly>
@@ -379,7 +382,7 @@ async function poll() {
     const mEl = document.getElementById('lm');
     const mCard = document.getElementById('mqtt-card');
     mqttEnabledState = !!d.mqttEn;
-    mEl.textContent = mqttEnabledState ? (d.mqtt ? 'OK' : 'ON') : 'OFF';
+    mEl.textContent = mqttEnabledState ? (d.mqtt ? 'OK' : 'LOST') : 'OFF';
     mCard.className = mqttEnabledState ? 'scard mqtt-on' : 'scard mqtt-off';
     
     if (mqttEnabledState && !d.mqtt) {
@@ -580,7 +583,7 @@ let mainPollInterval = setInterval(poll, 1000);
 //  Route handlers
 // ─────────────────────────────────────────────────────────────────────────────
 
-static uint8_t _sewState = 0;   // exposed from main via setter
+static volatile uint8_t _sewState = 0;   // exposed from main via setter
 
 void webServerSetSewState(uint8_t s) { _sewState = s; }
 
@@ -621,7 +624,10 @@ static void handlePostConfig() {
         _cfg->vib.threshold = newThr;
         
         int32_t stopThr = _cfg->vib.stopThreshold + delta;
-        if (stopThr < 0) stopThr = 0;
+        // Bump floor to at least the threshold minimum so the detector can
+        // actually leave the VIBRATING state (a 0 stop threshold never exits).
+        if (stopThr < newThr) stopThr = newThr;
+        if (stopThr > 8000)    stopThr = 8000;
         _cfg->vib.stopThreshold = stopThr;
     }
     if (doc["minDur"].is<int>())
@@ -731,6 +737,8 @@ void webServerInit(AppConfig* cfg) {
     Serial.println("[WEB] HTTP server started on port 80");
 }
 
-void webServerLoop()           { server.handleClient(); }
+void webServerLoop()           { if(!serverPaused) server.handleClient(); }
+void webServerPause() { if(!serverPaused){server.stop();serverPaused=true;} }
+void webServerResume() { if(serverPaused){server.begin();serverPaused=false;} }
 bool webServerHasUpdate()      { return _updated; }
 void webServerClearUpdate()    { _updated = false; }

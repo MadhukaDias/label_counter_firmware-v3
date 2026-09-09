@@ -1,0 +1,4 @@
+# Dependencies for mqtt_waveform_viewer.py
+paho-mqtt>=1.6
+matplotlib>=3.5
+# numpy comes in with matplotlib; tkinter ships with the standard CPython installer

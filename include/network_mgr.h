@@ -1,0 +1,9 @@
+#pragma once
+#include <Arduino.h>
+void networkInit();
+void networkLoop();
+void networkOpenPortal();
+bool networkConnected();
+bool networkPortalActive();
+String networkStationIP();
+String networkPortalIP();

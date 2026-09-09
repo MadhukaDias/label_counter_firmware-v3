@@ -3,6 +3,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <atomic>
+#include <esp_task_wdt.h>
 
 static WiFiClient   wifiClient;
 static PubSubClient mqttClient(wifiClient);
@@ -21,7 +23,8 @@ struct MqttMessage {
     uint16_t waveformLength;
 };
 static QueueHandle_t mqttQueue = NULL;
-static volatile bool _isMqttConnected = false;
+static std::atomic<bool> _isMqttConnected{false};
+static std::atomic<bool> _enabled{true};
 
 // ── Subscription callback ─────────────────────────────────────────────────────
 static void onMessage(char* topic, byte* payload, unsigned int len) {
@@ -47,7 +50,19 @@ static void reconnect() {
 
 static void mqttTaskRunner(void* pvParameters) {
     MqttMessage msg;
+    // Subscribe this task to the TWDT so a hung connect/loop cannot stall reboot.
+    esp_task_wdt_add(NULL);
     for(;;) {
+        esp_task_wdt_reset();
+        if(!_enabled.load() || WiFi.status()!=WL_CONNECTED){
+            _isMqttConnected=false;
+            if(mqttClient.connected())mqttClient.disconnect();
+            while(xQueueReceive(mqttQueue,&msg,0)==pdPASS){
+                if(msg.type==2&&msg.waveformData)free(msg.waveformData);
+            }
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
         bool connected = mqttClient.connected();
         _isMqttConnected = connected;
 
@@ -102,33 +117,43 @@ static void mqttTaskRunner(void* pvParameters) {
 
 // ── Public ────────────────────────────────────────────────────────────────────
 void mqttInit(const char* deviceId) {
+    if(mqttQueue)return;
     snprintf(_clientId, sizeof(_clientId), "lc_%s", deviceId);
-    strncpy(_myDeviceId, deviceId, sizeof(_myDeviceId));
+    snprintf(_myDeviceId, sizeof(_myDeviceId), "%s", deviceId);
     mqttClient.setBufferSize(16384);
+    if (mqttClient.getBufferSize() < 16384) {
+        Serial.println("[MQTT] ERROR: Failed to allocate 16KB client buffer; disabling MQTT");
+        _enabled = false;
+        return;
+    }
     mqttClient.setServer(MQTT_HOST, MQTT_PORT);
     mqttClient.setKeepAlive(MQTT_KEEPALIVE);
+    mqttClient.setSocketTimeout(3);
     mqttClient.setCallback(onMessage);
     Serial.printf("[MQTT] Client ID: %s\n", _clientId);
 
     mqttQueue = xQueueCreate(10, sizeof(MqttMessage));
     
-    xTaskCreatePinnedToCore(
+    if(!mqttQueue){Serial.println("[MQTT] Queue allocation failed");return;}
+    BaseType_t created=xTaskCreatePinnedToCore(
         mqttTaskRunner,   // Function
         "MQTT_Task",      // Name
-        4096,             // Stack size
+        8192,             // Stack size (JSON serialization of waveform needs room)
         NULL,             // Params
         1,                // Priority
         NULL,             // Handle
         0                 // Core 0
     );
+    if(created!=pdPASS){vQueueDelete(mqttQueue);mqttQueue=nullptr;Serial.println("[MQTT] Task creation failed");}
 }
 
+void mqttSetEnabled(bool enabled){_enabled=enabled;}
 bool mqttIsConnected() {
-    return _isMqttConnected;
+    return _enabled.load() && WiFi.status()==WL_CONNECTED && _isMqttConnected.load();
 }
 
 void mqttPublish(uint32_t count, const char* deviceId) {
-    if (mqttQueue == NULL) return;
+    if (mqttQueue == NULL || !mqttIsConnected()) return;
 
     MqttMessage msg;
     msg.type = 0;
@@ -143,7 +168,7 @@ void mqttPublish(uint32_t count, const char* deviceId) {
 }
 
 void mqttPublishEventStr(const char* eventName, const char* status, const char* deviceId) {
-    if (mqttQueue == NULL) return;
+    if (mqttQueue == NULL || !mqttIsConnected()) return;
 
     MqttMessage msg;
     memset(&msg, 0, sizeof(msg));
@@ -158,7 +183,7 @@ void mqttPublishEventStr(const char* eventName, const char* status, const char* 
 }
 
 void mqttPublishWaveform(uint32_t count, const char* eventName, const uint32_t* buffer, uint16_t length, const char* deviceId) {
-    if (mqttQueue == NULL) return;
+    if (mqttQueue == NULL || !mqttIsConnected()) return;
 
     MqttMessage msg;
     memset(&msg, 0, sizeof(msg));

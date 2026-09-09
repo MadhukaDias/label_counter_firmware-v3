@@ -132,7 +132,7 @@ button:disabled:active, input:disabled:active { transform: none !important; back
     <!-- MQTT Interval moved to STATE section -->
     <div class="fg" style="margin-bottom:28px;">
       <div class="fhdr"><span class="fname">MQTT Publish Interval</span><span class="funit">seconds</span></div>
-      <div class="fdesc">How often to push count + status to MQTT broker. A count event always publishes immediately regardless of this interval.</div>
+      <div class="fdesc">How often to push count + status to MQTT broker. Automatic counts are published on this interval. Button corrections publish immediately when connected.</div>
       <div class="srow">
         <input type="range" id="s-mqi" min="1" max="30" step="1">
         <input type="number" id="n-mqi" min="1" max="30" step="1" readonly>
@@ -360,7 +360,7 @@ async function poll() {
     const mEl = document.getElementById('lm');
     const mCard = document.getElementById('mqtt-card');
     mqttEnabledState = !!d.mqttEn;
-    mEl.textContent = mqttEnabledState ? (d.mqtt ? 'OK' : 'ON') : 'OFF';
+    mEl.textContent = mqttEnabledState ? (d.mqtt ? 'OK' : 'LOST') : 'OFF';
     mCard.className = mqttEnabledState ? 'scard mqtt-on' : 'scard mqtt-off';
     
     if (mqttEnabledState && !d.mqtt) {

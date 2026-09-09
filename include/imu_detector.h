@@ -20,6 +20,9 @@ bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut = nul
 // Raw magnitude (for live display / calibration)
 int32_t imuGetMagnitude();
 
+// Sensor health: false once DEVID checks fail mid-run (loose wiring, etc.)
+bool imuSensorPresent();
+
 // Phase 4 tracking getters
 uint32_t imuGetLastVibStart();
 uint32_t imuGetLastVibEnd();
