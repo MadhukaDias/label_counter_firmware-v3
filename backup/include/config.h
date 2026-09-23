@@ -1,32 +1,36 @@
 #pragma once
 #include <Arduino.h>
 
-// Waveshare ESP32-S3-Nano. Raw ESP32 GPIO numbers (not Arduino D numbers).
-#define PIN_SDA 11             // A4 -> ADXL345 SDA
-#define PIN_SCL 12             // A5 -> ADXL345 SCL
-#define PIN_BTN_INC 8          // D5 -> button -> GND
-#define PIN_BTN_DEC 7          // D4 -> button -> GND
-#define PIN_BTN_SELECT 6       // D3 -> button -> GND
-#define PIN_BTN_BACK 5         // D2 -> button -> GND
-#define TFT_SCLK 48            // D13
-#define TFT_MOSI 38            // D11
-#define TFT_CS 21              // D10
-#define TFT_DC 18              // D9
-#define TFT_RST 17             // D8
-#define TFT_ROTATION 1         // 160 x 128 landscape
-#define TFT_TAB INITR_BLACKTAB // Try INITR_GREENTAB / INITR_REDTAB if needed.
-#define TFT_SPI_HZ 8000000
+// ──────────────────────────────────────────────
+//  Pin Definitions  (XIAO ESP32-S3)
+// ──────────────────────────────────────────────
+/* #define PIN_SDA          D1
+#define PIN_SCL          D2
+#define PIN_BTN_INC      D3   // +1 count correction
+#define PIN_BTN_DEC      D4   // -1 count correction */
+
+// ──────────────────────────────────────────────
+//  Pin Definitions  (ESP32-S3-Nano)
+// ──────────────────────────────────────────────
+
+#define PIN_SDA 11     // A4 / SDA
+#define PIN_SCL 12     // A5 / SCL
+#define PIN_BTN_INC 18 // A6 / +1 count correction
+#define PIN_BTN_DEC 21 // A7 / -1 count correction
+
+// ──────────────────────────────────────────────
+//  OLED
+// ──────────────────────────────────────────────
+#define OLED_ADDRESS 0x3C
+#define OLED_WIDTH 128
+#define OLED_HEIGHT 64
 
 // ──────────────────────────────────────────────
 //  ADXL345
 // ──────────────────────────────────────────────
-#define ADXL_ADDRESS                                                           \
-  0x53 // Primary address (SDO/ALT-ADDR pin low). Use 0x1D
-       // if SDO tied high. The driver auto-probes both 0x53
-       // and 0x1D at init and uses whichever answers, so a
-       // mis-strapped module still works without a rebuild.
+#define ADXL_ADDRESS 0x53 // SDO/ALT-ADDR pin low. Use 0x1D if SDO tied high.
 #define ADXL_BW_RATE                                                           \
-  0x09 // BW_RATE reg code → 50 Hz output data rate
+  0x0B // BW_RATE reg code → 200 Hz output data rate (4x IMU_SAMPLE_HZ)
 
 // ADXL345 full-resolution sensitivity is fixed at 3.9 mg/LSB (256 LSB/g) on
 // every range, vs. the MPU-6050's 16384 LSB/g at ±2g — about 64x lower raw
@@ -37,9 +41,9 @@
 // portal instead.
 #define ADXL_MAG_GAIN 64
 
-#define IMU_SAMPLE_HZ 10 // polling rate
+#define IMU_SAMPLE_HZ 50 // polling rate
 #define IMU_SAMPLE_MS (1000 / IMU_SAMPLE_HZ)
-#define ROLL_AVG_SAMPLES 2 // rolling average window
+#define ROLL_AVG_SAMPLES 8 // rolling average window
 
 // ──────────────────────────────────────────────
 //  Default Vibration Parameters (NVS-overridable)
@@ -74,9 +78,8 @@
 //  WiFiManager AP
 // ──────────────────────────────────────────────
 #define WIFI_AP_NAME "LabelCounter"
-#define WIFI_AP_PASS ""        // open AP
-#define WIFI_FALLBACK_MS 10000 // start AP after station disconnect
-#define WIFI_RETRY_MS 30000    // retry saved station credentials
+#define WIFI_AP_PASS ""    // open AP
+#define WIFI_TIMEOUT_S 180 // portal timeout
 
 // ──────────────────────────────────────────────
 //  NVS namespace

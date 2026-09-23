@@ -71,32 +71,14 @@ void cfgSave(const AppConfig& cfg) {
 
 void cfgReset(AppConfig& cfg) {
     cfg.vib.threshold     = DEF_VIB_THRESHOLD;
-    cfg.vib.stopThreshold = 0;
-    cfg.vib.toleratingThr = 0;
     cfg.vib.minDurationMs = DEF_MIN_DURATION_MS;
     cfg.vib.silenceMs     = DEF_SILENCE_MS;
     cfg.hasLockSolenoid   = true;
-    cfg.lastCalibMax      = 0;
-    cfg.lastCalibMin      = 0;
-    cfg.lastSpikeThr      = 0;
-    cfg.lastLockPeak      = 0;
     cfg.lastCalibStatus   = 0;
     cfgSave(cfg);
 }
 
 void cfgSaveCount(uint32_t count) {
-    // Rate-limit NVS writes: a burst of button presses would otherwise rewrite
-    // the same sector many times (~100K erase cycles per sector). Coalesce to at
-    // most one write per second; an unsaved delta costs at most 1s of count on a
-    // power loss, which the MQTT interval heartbeat would mirror anyway.
-    static uint32_t lastWrite = 0;
-    static uint32_t lastSaved = 0xFFFFFFFF;
-    uint32_t now = millis();
-    if (count == lastSaved) return;
-    if (now - lastWrite < 1000) return;
-    lastWrite = now;
-    lastSaved = count;
-
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putUInt("count", count);
     prefs.end();

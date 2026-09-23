@@ -1,25 +1,3 @@
-#include "web_server_mgr.h"
-#include "config.h"
-#include "imu_detector.h"
-#include <WebServer.h>
-#include <ArduinoJson.h>
-
-static WebServer server(80);
-static bool serverPaused=false;
-static AppConfig* _cfg     = nullptr;
-// Cross-task visibility (web handlers vs main loop): keep volatile so a later
-// move of the server to its own task cannot introduce stale reads.
-static volatile bool _updated       = false;
-static volatile bool _mqttOk        = false;
-static volatile bool _vibActive     = false;
-
-void webServerSetMqttOk(bool ok)    { _mqttOk   = ok; }
-void webServerSetVibActive(bool va) { _vibActive = va; }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Inline HTML — no LittleFS required, zero filesystem dependency
-// ─────────────────────────────────────────────────────────────────────────────
-static const char INDEX_HTML[] PROGMEM = R"rawhtml(
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -154,7 +132,7 @@ button:disabled:active, input:disabled:active { transform: none !important; back
     <!-- MQTT Interval moved to STATE section -->
     <div class="fg" style="margin-bottom:28px;">
       <div class="fhdr"><span class="fname">MQTT Publish Interval</span><span class="funit">seconds</span></div>
-      <div class="fdesc">How often to push count + status to MQTT broker. Automatic counts are published on this interval. Button corrections publish immediately when connected.</div>
+      <div class="fdesc">How often to push count + status to MQTT broker. A count event always publishes immediately regardless of this interval.</div>
       <div class="srow">
         <input type="range" id="s-mqi" min="1" max="30" step="1">
         <input type="number" id="n-mqi" min="1" max="30" step="1" readonly>
@@ -179,70 +157,22 @@ button:disabled:active, input:disabled:active { transform: none !important; back
       <div class="scard" style="min-height: auto;">
         <div class="slbl">Start Thr</div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('thr',-50,100,8000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-thr" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('thr',50,100,8000)" disabled style="opacity:0.3;">+</button>
+          <button type="button" id="btn-thr-dec" class="bdim" onclick="incThr(-50)" disabled style="opacity:0.3;">-</button>
+          <div class="sval" id="n-thr-disp" style="margin-top:0;">--</div>
+          <button type="button" id="btn-thr-inc" class="bdim" onclick="incThr(50)" disabled style="opacity:0.3;">+</button>
         </div>
         <input type="hidden" id="n-thr" name="threshold">
       </div>
-      <div class="scard" style="min-height: auto;">
-        <div class="slbl">Stop Thr</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('sthr',-50,0,8000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-sthr" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('sthr',50,0,8000)" disabled style="opacity:0.3;">+</button>
-        </div>
-        <input type="hidden" id="n-sthr">
-      </div>
-      <div class="scard" style="min-height: auto;">
-        <div class="slbl">Spike Thr</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('spikethr',-50,0,30000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-spikethr" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('spikethr',50,0,30000)" disabled style="opacity:0.3;">+</button>
-        </div>
-        <input type="hidden" id="n-spikethr">
-      </div>
-      <div class="scard" style="min-height: auto;">
-        <div class="slbl">Min Dur(ms)</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('dur',-10,100,3000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-dur" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('dur',10,100,3000)" disabled style="opacity:0.3;">+</button>
-        </div>
-        <input type="hidden" id="n-dur">
-      </div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">Stop Thr</div><div class="sval" id="s-sthr">--</div></div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">Spike Thr</div><div class="sval" id="s-spikethr">--</div></div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">Min Dur(ms)</div><div class="sval" id="n-dur-disp">--</div><input type="hidden" id="n-dur"></div>
     </div>
 
     <!-- Row 2: cMax, cMin, Lock Peak -->
     <div class="stats" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 14px;">
-      <div class="scard" style="min-height: auto;">
-        <div class="slbl">cMax</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('cmax',-50,0,30000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-cmax" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('cmax',50,0,30000)" disabled style="opacity:0.3;">+</button>
-        </div>
-        <input type="hidden" id="n-cmax">
-      </div>
-      <div class="scard" style="min-height: auto;">
-        <div class="slbl">cMin</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('cmin',-50,0,30000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-cmin" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('cmin',50,0,30000)" disabled style="opacity:0.3;">+</button>
-        </div>
-        <input type="hidden" id="n-cmin">
-      </div>
-      <div class="scard" style="min-height: auto;">
-        <div class="slbl">Lock Peak</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('lpk',-50,0,30000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-lpk" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('lpk',50,0,30000)" disabled style="opacity:0.3;">+</button>
-        </div>
-        <input type="hidden" id="n-lpk">
-      </div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">cMax</div><div class="sval" id="s-cmax">--</div></div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">cMin</div><div class="sval" id="s-cmin">--</div></div>
+      <div class="scard" style="min-height: auto;"><div class="slbl">Lock Peak</div><div class="sval" id="s-lpk">--</div></div>
     </div>
 
     <!-- Silence Window -->
@@ -309,14 +239,14 @@ function showToast(msg) {
 }
 
 function applyLockState() {
+  const dec = document.getElementById('btn-thr-dec');
+  const inc = document.getElementById('btn-thr-inc');
   const sSil = document.getElementById('s-sil');
+  const nSil = document.getElementById('n-sil');
   
+  if (dec) { dec.disabled = isLocked; dec.style.opacity = isLocked ? '0.3' : '1'; }
+  if (inc) { inc.disabled = isLocked; inc.style.opacity = isLocked ? '0.3' : '1'; }
   if (sSil) { sSil.disabled = isLocked; sSil.style.opacity = isLocked ? '0.4' : '1'; }
-  
-  document.querySelectorAll('.btn-val').forEach(b => {
-    b.disabled = isLocked;
-    b.style.opacity = isLocked ? '0.3' : '1';
-  });
   
   const cSol = document.getElementById('cb-solenoid');
   if (cSol) { cSol.disabled = isLocked; cSol.style.opacity = isLocked ? '0.5' : '1'; }
@@ -360,13 +290,13 @@ async function toggleMqtt() {
   showToast('MQTT toggled');
 }
 
-function incVal(id, val, min, max) {
-  const n = document.getElementById('n-' + id);
-  const d = document.getElementById('s-' + id);
+function incThr(val) {
+  const n = document.getElementById('n-thr');
+  const d = document.getElementById('n-thr-disp');
   let v = parseInt(n.value) || 0;
   v += val;
-  if(v < min) v = min;
-  if(v > max) v = max;
+  if(v < 100) v = 100;
+  if(v > 8000) v = 8000;
   n.value = v;
   d.textContent = v;
 }
@@ -376,25 +306,10 @@ async function loadConfig() {
   try {
     const d = await (await fetch('/api/config')).json();
     document.getElementById('n-thr').value = d.threshold;
-    document.getElementById('s-thr').textContent = d.threshold;
+    document.getElementById('n-thr-disp').textContent = d.threshold;
     document.getElementById('n-dur').value = d.minDur;
-    document.getElementById('s-dur').textContent = d.minDur;
+    document.getElementById('n-dur-disp').textContent = d.minDur;
     
-    document.getElementById('n-sthr').value = d.tempStop;
-    document.getElementById('s-sthr').textContent = d.tempStop;
-
-    document.getElementById('n-cmax').value = d.lastCalibMax;
-    document.getElementById('s-cmax').textContent = d.lastCalibMax;
-
-    document.getElementById('n-cmin').value = d.lastCalibMin;
-    document.getElementById('s-cmin').textContent = d.lastCalibMin;
-
-    document.getElementById('n-spikethr').value = d.lastSpikeThr;
-    document.getElementById('s-spikethr').textContent = d.lastSpikeThr;
-
-    document.getElementById('n-lpk').value = d.lastLockPeak;
-    document.getElementById('s-lpk').textContent = d.lastLockPeak;
-
     if(document.getElementById('s-sil')) document.getElementById('s-sil').value = d.silence;
     document.getElementById('n-sil').value = d.silence;
     
@@ -409,6 +324,12 @@ async function loadConfig() {
     mqttEnabledState = d.mqttEnabled;
     document.getElementById('lm').textContent = mqttEnabledState ? 'ON' : 'OFF';
     document.getElementById('did').textContent = 'ID: ' + (d.deviceId || '--');
+    
+    document.getElementById('s-sthr').textContent = d.tempStop;
+    document.getElementById('s-cmax').textContent = d.lastCalibMax;
+    document.getElementById('s-cmin').textContent = d.lastCalibMin;
+    document.getElementById('s-spikethr').textContent = d.lastSpikeThr;
+    document.getElementById('s-lpk').textContent = d.lastLockPeak;
     
     let lStatus = '--';
     if(d.cStat === 1) lStatus = 'SUCCESS';
@@ -439,7 +360,7 @@ async function poll() {
     const mEl = document.getElementById('lm');
     const mCard = document.getElementById('mqtt-card');
     mqttEnabledState = !!d.mqttEn;
-    mEl.textContent = mqttEnabledState ? (d.mqtt ? 'OK' : 'LOST') : 'OFF';
+    mEl.textContent = mqttEnabledState ? (d.mqtt ? 'OK' : 'ON') : 'OFF';
     mCard.className = mqttEnabledState ? 'scard mqtt-on' : 'scard mqtt-off';
     
     if (mqttEnabledState && !d.mqtt) {
@@ -459,12 +380,7 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
   e.preventDefault();
   const body = {
     threshold: +document.getElementById('n-thr').value,
-    stopThr:   +document.getElementById('n-sthr').value,
-    spikeThr:  +document.getElementById('n-spikethr').value,
     minDur:    +document.getElementById('n-dur').value,
-    cMax:      +document.getElementById('n-cmax').value,
-    cMin:      +document.getElementById('n-cmin').value,
-    lpk:       +document.getElementById('n-lpk').value,
     silence:   +document.getElementById('n-sil').value,
     mqttInterval: +document.getElementById('n-mqi').value * 1000,
     mqttEnabled: mqttEnabledState,
@@ -640,161 +556,3 @@ let mainPollInterval = setInterval(poll, 1000);
 </script>
 </body>
 </html>
-)rawhtml";
-// ─────────────────────────────────────────────────────────────────────────────
-//  Route handlers
-// ─────────────────────────────────────────────────────────────────────────────
-
-static volatile uint8_t _sewState = 0;   // exposed from main via setter
-
-void webServerSetSewState(uint8_t s) { _sewState = s; }
-
-static void handleRoot() {
-    server.send_P(200, "text/html", INDEX_HTML);
-}
-
-static void handleGetConfig() {
-    JsonDocument doc;
-    doc["threshold"]    = _cfg->vib.threshold;
-    doc["minDur"]       = _cfg->vib.minDurationMs;
-    doc["silence"]      = _cfg->vib.silenceMs;
-    doc["mqttInterval"] = _cfg->mqttIntervalMs;
-    doc["mqttEnabled"]  = _cfg->mqttEnabled;
-    doc["hasSolenoid"]  = _cfg->hasLockSolenoid;
-    doc["count"]        = _cfg->count;
-    doc["deviceId"]     = _cfg->deviceId;
-    doc["lastCalibMax"] = _cfg->lastCalibMax;
-    doc["lastCalibMin"] = _cfg->lastCalibMin;
-    doc["lastSpikeThr"] = _cfg->lastSpikeThr;
-    doc["lastLockPeak"] = _cfg->lastLockPeak;
-    doc["cStat"]        = _cfg->lastCalibStatus;
-    
-    doc["tempStop"]     = _cfg->vib.stopThreshold;
-    
-    String out; serializeJson(doc, out);
-    server.send(200, "application/json", out);
-}
-
-static void handlePostConfig() {
-    if (!server.hasArg("plain")) { server.send(400, "text/plain", "No body"); return; }
-    JsonDocument doc;
-    if (deserializeJson(doc, server.arg("plain"))) { server.send(400, "text/plain", "Bad JSON"); return; }
-
-    if (doc["threshold"].is<int>()) _cfg->vib.threshold = constrain((int)doc["threshold"], 100, 8000);
-    if (doc["stopThr"].is<int>())   _cfg->vib.stopThreshold = constrain((int)doc["stopThr"], 0, 8000);
-    if (doc["spikeThr"].is<int>())  _cfg->lastSpikeThr = constrain((int)doc["spikeThr"], 0, 30000);
-    if (doc["cMax"].is<int>())      _cfg->lastCalibMax = constrain((int)doc["cMax"], 0, 30000);
-    if (doc["cMin"].is<int>())      _cfg->lastCalibMin = constrain((int)doc["cMin"], 0, 30000);
-    if (doc["lpk"].is<int>())       _cfg->lastLockPeak = constrain((int)doc["lpk"], 0, 30000);
-    if (doc["minDur"].is<int>())
-        _cfg->vib.minDurationMs = constrain((int)doc["minDur"], 100, 3000);
-    if (doc["silence"].is<int>())
-        _cfg->vib.silenceMs     = constrain((int)doc["silence"], 200, 5000);
-    if (doc["mqttInterval"].is<int>())
-        _cfg->mqttIntervalMs    = constrain((int)doc["mqttInterval"], 5000, 300000);
-    if (doc["mqttEnabled"].is<bool>())
-        _cfg->mqttEnabled       = doc["mqttEnabled"];
-    if (doc["hasSolenoid"].is<bool>())
-        _cfg->hasLockSolenoid   = doc["hasSolenoid"];
-
-    cfgSave(*_cfg);
-    _updated = true;
-    server.send(200, "application/json", "{\"ok\":true}");
-    Serial.println("[WEB] Config updated via portal.");
-}
-
-static void handleResetConfig() {
-    cfgReset(*_cfg);
-    _updated = true;
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-static void handleResetCount() {
-    _cfg->count = 0;
-    cfgSaveCount(0);
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-extern void startCalibration();
-static void handleCalibrate() {
-    startCalibration();
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-extern void skipCalibPhase2();
-static void handleCalibSkip() {
-    skipCalibPhase2();
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-extern void abortCalibration();
-static void handleCalibAbort() {
-    abortCalibration();
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-extern void getCalibStatus(int& state, int& lockCount, int& imuState, int& ftCount);
-static void handleCalibStatus() {
-    int state, lockCount, imuState, ftCount;
-    getCalibStatus(state, lockCount, imuState, ftCount);
-    JsonDocument doc;
-    doc["state"] = state;
-    doc["lockCount"] = lockCount;
-    doc["imuState"] = imuState;
-    doc["ftCount"] = ftCount;
-    doc["cStat"] = _cfg->lastCalibStatus;
-    String out; serializeJson(doc, out);
-    server.send(200, "application/json", out);
-}
-
-static void handleStatus() {
-    JsonDocument doc;
-    doc["count"]     = _cfg->count;
-    doc["mag"]       = imuGetMagnitude();
-    doc["vibActive"] = _vibActive;
-    doc["state"]     = _sewState;
-    doc["mqtt"]      = _mqttOk;
-    doc["mqttEn"]    = _cfg->mqttEnabled;
-    
-    int cstate, lcnt, imst, ftc;
-    getCalibStatus(cstate, lcnt, imst, ftc);
-    doc["cState"]    = cstate;
-    
-    String out; serializeJson(doc, out);
-    server.send(200, "application/json", out);
-}
-
-static void handleMqttToggle() {
-    _cfg->mqttEnabled = !_cfg->mqttEnabled;
-    cfgSave(*_cfg);
-    _updated = true;
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Public API
-// ─────────────────────────────────────────────────────────────────────────────
-
-void webServerInit(AppConfig* cfg) {
-    _cfg = cfg;
-    server.on("/",                HTTP_GET,  handleRoot);
-    server.on("/api/config",      HTTP_GET,  handleGetConfig);
-    server.on("/api/config",      HTTP_POST, handlePostConfig);
-    server.on("/api/reset-config",HTTP_POST, handleResetConfig);
-    server.on("/api/reset-count", HTTP_POST, handleResetCount);
-    server.on("/api/calibrate",   HTTP_POST, handleCalibrate);
-    server.on("/api/calib_skip",  HTTP_POST, handleCalibSkip);
-    server.on("/api/calib_abort", HTTP_POST, handleCalibAbort);
-    server.on("/api/calib_status",HTTP_GET,  handleCalibStatus);
-    server.on("/api/status",      HTTP_GET,  handleStatus);
-    server.on("/api/mqtt_toggle", HTTP_POST, handleMqttToggle);
-    server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
-    server.begin();
-    Serial.println("[WEB] HTTP server started on port 80");
-}
-
-void webServerLoop()           { if(!serverPaused) server.handleClient(); }
-void webServerPause() { if(!serverPaused){server.stop();serverPaused=true;} }
-void webServerResume() { if(serverPaused){server.begin();serverPaused=false;} }
-bool webServerHasUpdate()      { return _updated; }
-void webServerClearUpdate()    { _updated = false; }
