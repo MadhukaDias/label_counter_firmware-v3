@@ -257,7 +257,7 @@ void imuInit() {
 static int32_t prevMag = 0;
 static uint32_t ignoreUntilMs = 0;
 
-bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut) {
+bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
     checkSensorPresent();
 
     int32_t ax, ay, az;
@@ -332,7 +332,7 @@ bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut) {
 
         case SewState::VIBRATING:
             if (!vibrating) {
-                if ((now - lastVibratingMs) > 250) {
+                if ((now - lastVibratingMs) > cfg.dropoutMs) {
                     state = SewState::IDLE;   // dropped before min duration
                 } else {
                     stateEnterMs += deltaMs;  // Pause the timer during dropout

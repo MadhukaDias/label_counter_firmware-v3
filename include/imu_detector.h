@@ -8,6 +8,7 @@ struct VibConfig {
     uint32_t minDurationMs; // must vibrate this long to confirm
     uint32_t silenceMs;     // silence after vib to trigger count
     int32_t  toleratingThr; // median of 5-attempt medians
+    uint32_t dropoutMs;     // max dropout gap that keeps the timer running
 };
 
 void imuInit();
@@ -15,7 +16,7 @@ void imuCalibrateBase();
 
 // Call every IMU_SAMPLE_MS ms.
 // Returns true when a new sewing cycle has been COUNTED.
-bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut = nullptr);
+bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut = nullptr);
 
 // Raw magnitude (for live display / calibration)
 int32_t imuGetMagnitude();

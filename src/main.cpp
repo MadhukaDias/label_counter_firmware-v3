@@ -47,17 +47,10 @@ static void flushWaveformToMqtt(const char* eventName) {
 
 #include <algorithm> // for std::sort
 // ── Calibration ───────────────────────────────────────────────────────────────
-enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_WAITING, CALIB_SEW_WAITING, CALIB_FINE_TUNE, CALIB_SEW_DONE, CALIB_SKIP_LOCK };
+// CALIB_LOCK_INFO is a brief informational display-only state (no calculation)
+enum CalibState { CALIB_IDLE, CALIB_SAMPLING, CALIB_NOISE_DONE, CALIB_LOCK_INFO, CALIB_SEW_WAITING, CALIB_FINE_TUNE, CALIB_SEW_DONE };
 static CalibState calibState = CALIB_IDLE;
-static uint8_t calibLockCount = 0;
-static uint32_t calibLockPeaks[3] = {0, 0, 0};
-static uint32_t calibCurrentLockPeak = 0;
-static uint32_t calibLastLockEventMs = 0;
-static bool calibInLockEvent = false;
-static uint8_t calibSpikeWidth = 0;
-static bool calibPhase2Confirming = false;
-static uint32_t calibPhase2QuietStartMs = 0;
-static uint32_t calibPhase2SewingCooldownMs = 0;
+static uint32_t calibLockInfoMs = 0; // when we entered CALIB_LOCK_INFO
 #define CALIB_SAMPLES 150
 static uint16_t calibIdx = 0;
 
@@ -77,12 +70,38 @@ static uint32_t prevAttemptEndMs = 0;
 uint32_t* calibBuffer = nullptr;
 uint32_t calibWarningMs = 0;
 
+// Snapshot of calibration values taken at start, used to restore on abort
+struct CalibSnapshot {
+    int32_t  threshold;
+    int32_t  stopThreshold;
+    uint32_t minDurationMs;
+    uint32_t silenceMs;
+    uint32_t dropoutMs;
+    int32_t  toleratingThr;
+    uint32_t lastCalibMax;
+    uint32_t lastCalibMin;
+    uint8_t  lastCalibStatus;
+};
+static CalibSnapshot calibSnapshot;
+
 void startCalibration() {
     if(calibState != CALIB_IDLE) return;
     menuOpen=false; resetConfirm=false; networkView=false;
     fineTuneCount=0;
-    // Defensively release any stale allocations from a prior session so we
-    // cannot leak a buffer if a previous exit path left one behind.
+    
+    // Snapshot current values so we can restore them if aborted
+    calibSnapshot.threshold      = appCfg.vib.threshold;
+    calibSnapshot.stopThreshold  = appCfg.vib.stopThreshold;
+    calibSnapshot.minDurationMs  = appCfg.vib.minDurationMs;
+    calibSnapshot.silenceMs      = appCfg.vib.silenceMs;
+    calibSnapshot.dropoutMs      = appCfg.vib.dropoutMs;
+    calibSnapshot.toleratingThr  = appCfg.vib.toleratingThr;
+    calibSnapshot.lastCalibMax   = appCfg.lastCalibMax;
+    calibSnapshot.lastCalibMin   = appCfg.lastCalibMin;
+    calibSnapshot.lastCalibStatus = appCfg.lastCalibStatus;
+    Serial.println("[CALIB] Snapshot saved.");
+    
+    // Defensively release any stale allocations from a prior session.
     if (calibBuffer) { delete[] calibBuffer; calibBuffer = nullptr; }
     if (calibSewBuffer) { delete[] calibSewBuffer; calibSewBuffer = nullptr; }
     if (attemptLowestPeaks) { delete[] attemptLowestPeaks; attemptLowestPeaks = nullptr; }
@@ -91,19 +110,9 @@ void startCalibration() {
     calibBuffer = new uint32_t[CALIB_SAMPLES];
     calibState = CALIB_SAMPLING;
     calibIdx = 0;
-    calibLockCount = 0;
-    calibLockPeaks[0] = 0; calibLockPeaks[1] = 0; calibLockPeaks[2] = 0;
-    calibCurrentLockPeak = 0;
-    calibLastLockEventMs = 0;
-    calibInLockEvent = false;
-    calibSpikeWidth = 0;
-    calibPhase2Confirming = false;
-    calibPhase2QuietStartMs = 0;
-    calibPhase2SewingCooldownMs = 0;
     Serial.println("[CALIB] Phase 1: Started 3-second noise sampling...");
     
     displayShowMessage("CALIBRATION", "MODE");
-    // Notification is timed by the display manager; keep sampling responsive.
 
     if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
         mqttPublishEventStr("calibration_start", "", appCfg.deviceId);
@@ -112,53 +121,29 @@ void startCalibration() {
 
 void getCalibStatus(int& state, int& lockCount, int& imuState, int& ftCount) {
     state = (int)calibState;
-    lockCount = calibLockCount;
+    lockCount = 0; // no longer used
     imuState = imuGetState();
     ftCount = fineTuneCount;
-}
-
-void skipCalibPhase2() {
-    if (calibState == CALIB_LOCK_WAITING || calibState == CALIB_SKIP_LOCK) {
-        calibState = CALIB_SEW_WAITING;
-        // No lock solenoid configured: derive a spike-detection fallback from
-        // the Phase 1 noise profile instead of a machine-blind constant. Lock
-        // impacts are far stronger than sewing vibration, so scale the measured
-        // clean maximum well above the calibrated threshold.
-        uint32_t fallback = std::max((uint32_t)(appCfg.vib.threshold * 5),
-                                     (uint32_t)2000);
-        if (appCfg.lastCalibMax > 0 && appCfg.lastCalibMax < 0xFFFFFFF) {
-            fallback = std::max(appCfg.lastCalibMax * 20u, fallback);
-        }
-        appCfg.lastLockPeak = fallback;
-        cfgSave(appCfg);
-        Serial.printf("[CALIB] Phase 2 Skipped. Lock peak set to %lu fallback.\n",
-                      (unsigned long)appCfg.lastLockPeak);
-        if (calibSewBuffer) delete[] calibSewBuffer;
-        calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
-        calibSewIdx = 0;
-        
-        if (attemptLowestPeaks) delete[] attemptLowestPeaks;
-        if (attemptMedians) delete[] attemptMedians;
-        if (attemptDurations) delete[] attemptDurations;
-        attemptLowestPeaks = new uint32_t[5];
-        attemptMedians = new uint32_t[5];
-        attemptDurations = new uint32_t[5];
-        fineTuneCount = 0;
-        
-        appCfg.vib.minDurationMs = 250;
-        cfgSave(appCfg);
-        Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
-    }
 }
 
 void abortCalibration() {
     if (calibState != CALIB_IDLE) {
         calibState = CALIB_IDLE;
-        appCfg.lastCalibStatus = 2; // CANCELED
+        
+        // Restore previously calibrated values from snapshot
+        appCfg.vib.threshold     = calibSnapshot.threshold;
+        appCfg.vib.stopThreshold = calibSnapshot.stopThreshold;
+        appCfg.vib.minDurationMs = calibSnapshot.minDurationMs;
+        appCfg.vib.silenceMs     = calibSnapshot.silenceMs;
+        appCfg.vib.dropoutMs     = calibSnapshot.dropoutMs;
+        appCfg.vib.toleratingThr = calibSnapshot.toleratingThr;
+        appCfg.lastCalibMax      = calibSnapshot.lastCalibMax;
+        appCfg.lastCalibMin      = calibSnapshot.lastCalibMin;
+        appCfg.lastCalibStatus   = 2; // CANCELED
         cfgSave(appCfg);
+        Serial.println("[CALIB] Aborted - restored previous calibration values.");
         
         displayShowMessage("CALIBRATION", "ABORTED");
-        // Notification is timed by the display manager; keep sampling responsive.
         
         // Cleanup arrays
         if (attemptLowestPeaks) { delete[] attemptLowestPeaks; attemptLowestPeaks = nullptr; }
@@ -167,8 +152,6 @@ void abortCalibration() {
         if (calibSewBuffer) { delete[] calibSewBuffer; calibSewBuffer = nullptr; }
         if (calibBuffer) { delete[] calibBuffer; calibBuffer = nullptr; }
         
-        Serial.println("[CALIB] Calibration aborted by user.");
-        displayShowMessage("Aborting", "Calibration...");
         lastDisplayMs = millis();
 
         if (wifiOk && appCfg.mqttEnabled && mqttIsConnected()) {
@@ -179,7 +162,7 @@ void abortCalibration() {
 
 // Button actions retain calibration capture/undo behavior from the original.
 static void captureOrSkip(){
-    if(calibState==CALIB_LOCK_WAITING||calibState==CALIB_SKIP_LOCK)skipCalibPhase2();
+    if(calibState==CALIB_LOCK_INFO)calibState=CALIB_SEW_WAITING; // manually advance past info screen
     else if(calibState==CALIB_SEW_WAITING||calibState==CALIB_FINE_TUNE)calibState=CALIB_SEW_DONE;
 }
 static void undoCapture(uint32_t now){
@@ -208,8 +191,7 @@ static void handleButtons(){
         if(buttons[3].longPress){abortCalibration();return;}
         if(buttons[0].clicked||buttons[2].clicked)captureOrSkip();
         if(buttons[1].clicked){
-            if(calibState==CALIB_LOCK_WAITING)skipCalibPhase2();
-            else if(calibState==CALIB_FINE_TUNE)undoCapture(now);
+            if(calibState==CALIB_FINE_TUNE)undoCapture(now);
         }
         return;
     }
@@ -286,7 +268,7 @@ void loop() {
 
         const bool calibrationSample = calibState != CALIB_IDLE;
         bool newVib  = false;
-        bool counted = imuUpdate(appCfg.vib, appCfg.lastLockPeak, &newVib);
+        bool counted = imuUpdate(appCfg.vib, &newVib);
         vibActive    = newVib;
         uint32_t currentMag = imuGetMagnitude();
 
@@ -349,7 +331,6 @@ void loop() {
 
             appCfg.lastCalibMax = cleanMax;
             appCfg.lastCalibMin = cleanMin;
-            appCfg.lastSpikeThr = spikeThreshold;
             
             appCfg.vib.stopThreshold = (appCfg.vib.threshold + cleanMax) / 2;
             if (appCfg.vib.stopThreshold > 8000) appCfg.vib.stopThreshold = 8000;
@@ -360,106 +341,31 @@ void loop() {
             Serial.printf("[CALIB] Phase 1 Done. Median: %lu, SpikeThr: %lu, CleanMax: %lu, NewThr: %lu\n", 
                           median, spikeThreshold, cleanMax, appCfg.vib.threshold);
 
-            // Transition to Phase 2
-            if (appCfg.hasLockSolenoid) {
-                calibState = CALIB_LOCK_WAITING;
-                Serial.println("[CALIB] Phase 2: Waiting for 3 solenoid actuations...");
-            } else {
-                calibState = CALIB_SKIP_LOCK;
-                calibLastLockEventMs = now;
-                Serial.println("[CALIB] No Lock Solenoid configured. Skipping Phase 2...");
-            }
+            // Transition to Phase 2 (display-only info screen, no calculation)
+            calibState = CALIB_LOCK_INFO;
+            calibLockInfoMs = now;
+            Serial.println("[CALIB] Phase 2: Displaying solenoid info (display only)...");
             
             // Clean up RAM immediately
             delete[] calibBuffer;
             calibBuffer = nullptr;
-            Serial.println("[CALIB] Phase 2: Waiting for 3 solenoid actuations...");
-        } else if (calibState == CALIB_LOCK_WAITING) {
-            if (currentMag > appCfg.vib.threshold) {
-                // If it vibrates, push the sewing cooldown forward
-                calibPhase2SewingCooldownMs = now;
-                
-                if (calibPhase2Confirming) {
-                    // It spiked again during the quiet confirmation window! It's continuous sewing.
-                    calibPhase2Confirming = false;
-                    calibInLockEvent = true;
-                    calibSpikeWidth = 10; // Invalidate the width
-                } else if (now - calibLastLockEventMs >= 2500) {
-                    // Start or continue tracking a spike (only if not in lock cooldown)
-                    calibInLockEvent = true;
-                    calibSpikeWidth++;
-                    if (currentMag > calibCurrentLockPeak) {
-                        calibCurrentLockPeak = currentMag;
-                    }
-                }
-            } else {
-                // Magnitude dropped below threshold
-                if (calibInLockEvent) {
-                    calibInLockEvent = false;
-                    
-                    // Evaluate the spike we just saw
-                    if (calibSpikeWidth >= 1 && calibSpikeWidth <= 3) {
-                        // It was short enough! Start the 200ms quiet confirmation window
-                        calibPhase2Confirming = true;
-                        calibPhase2QuietStartMs = now;
-                    } else {
-                        // Too wide (>= 4). It was sewing vibration. Ignore it.
-                        calibSpikeWidth = 0;
-                        calibCurrentLockPeak = 0;
-                    }
-                }
-                
-                if (calibPhase2Confirming) {
-                    if (now - calibPhase2QuietStartMs >= 200) {
-                        // It stayed completely quiet for 200ms after the spike!
-                        // CONFIRMED LOCK HIT!
-                        if (calibLockCount < 3) {
-                            calibLockPeaks[calibLockCount] = calibCurrentLockPeak;
-                        }
-                        calibLockCount++;
-                        calibLastLockEventMs = now; // Start 2.5s cooldown
-                        Serial.printf("[CALIB] Solenoid Actuation %d/3 Confirmed. Peak: %lu (Width: %d)\n", calibLockCount, calibCurrentLockPeak, calibSpikeWidth);
-                        
-                        calibPhase2Confirming = false;
-                        calibSpikeWidth = 0;
-                        calibCurrentLockPeak = 0;
-                        
-                        if (calibLockCount >= 3) {
-                            uint32_t p[3] = {calibLockPeaks[0], calibLockPeaks[1], calibLockPeaks[2]};
-                            std::sort(p, p + 3);
-                            appCfg.lastLockPeak = p[1]; // Median of 3
-                            
-                            cfgSave(appCfg);
-                            Serial.printf("[CALIB] Phase 2 Done. Median Lock Peak: %lu\n", appCfg.lastLockPeak);
-                            calibState = CALIB_SEW_WAITING;
-                            if (calibSewBuffer) delete[] calibSewBuffer;
-                            calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
-                            calibSewIdx = 0;
-                            
-                            if (attemptLowestPeaks) delete[] attemptLowestPeaks;
-                            if (attemptMedians) delete[] attemptMedians;
-                            if (attemptDurations) delete[] attemptDurations;
-                            attemptLowestPeaks = new uint32_t[5];
-                            attemptMedians = new uint32_t[5];
-                            attemptDurations = new uint32_t[5];
-                            fineTuneCount = 0;
-                            
-                            appCfg.vib.minDurationMs = 250;
-                            cfgSave(appCfg);
-                            Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
-                        }
-                    }
-                }
-                
-                // If it's been quiet long enough, and we are in the 2.5s cooldown, make sure variables are clean
-                if (!calibPhase2Confirming && !calibInLockEvent && (now - calibLastLockEventMs < 2500)) {
-                    calibSpikeWidth = 0;
-                    calibCurrentLockPeak = 0;
-                }
-            }
-        } else if (calibState == CALIB_SKIP_LOCK) {
-            if (now - calibLastLockEventMs >= 1000) {
-                skipCalibPhase2();
+        } else if (calibState == CALIB_LOCK_INFO) {
+            // Display-only info phase: show lock solenoid status for 2 seconds then advance
+            if (now - calibLockInfoMs >= 2000) {
+                calibState = CALIB_SEW_WAITING;
+                if (calibSewBuffer) delete[] calibSewBuffer;
+                calibSewBuffer = new uint32_t[CALIB_SEW_SAMPLES];
+                calibSewIdx = 0;
+                if (attemptLowestPeaks) delete[] attemptLowestPeaks;
+                if (attemptMedians) delete[] attemptMedians;
+                if (attemptDurations) delete[] attemptDurations;
+                attemptLowestPeaks = new uint32_t[5];
+                attemptMedians = new uint32_t[5];
+                attemptDurations = new uint32_t[5];
+                fineTuneCount = 0;
+                appCfg.vib.minDurationMs = 250;
+                cfgSave(appCfg);
+                Serial.println("[CALIB] Phase 3: Waiting for 1st sewing attempt...");
             }
         } else if (calibState == CALIB_SEW_WAITING || calibState == CALIB_FINE_TUNE) {
             if (calibSewBuffer && calibSewIdx < CALIB_SEW_SAMPLES) {
@@ -476,25 +382,15 @@ void loop() {
             // Processing logic here
             uint32_t tempStart = appCfg.vib.threshold;
             uint32_t tempStop = appCfg.vib.stopThreshold;
-            uint32_t cleanMax = tempStop * 2 - tempStart; // derived back since tempStop = (tempStart + cleanMax)/2
+            uint32_t cleanMax = tempStop * 2 - tempStart; // derived back
             
-            // 1. Pre-processing: extract valid segments
+            // 1. Pre-processing: extract valid segments above stop threshold
             uint32_t* processedBuf = new uint32_t[CALIB_SEW_SAMPLES];
             uint16_t procIdx = 0;
             
             for (uint16_t i = 0; i < calibSewIdx; i++) {
                 uint32_t mag = calibSewBuffer[i];
                 if (mag < tempStop) continue; // Ignore Noise
-                
-                // Identify Spikes (rapid high magnitude > 80% of lastLockPeak)
-                // For simplicity here, if it exceeds appCfg.lastLockPeak * 0.8, it's a spike.
-                if (mag > (appCfg.lastLockPeak * 0.8)) {
-                    if (mag > appCfg.lastLockPeak && appCfg.lastLockPeak != 22000) {
-                        appCfg.lastLockPeak = (appCfg.lastLockPeak + mag) / 2; // Refine Lock Peak
-                    }
-                    continue; // Skip spike
-                }
-                
                 processedBuf[procIdx++] = mag;
             }
             
@@ -665,10 +561,7 @@ void loop() {
                 displayShowMessage("WARNING", "Invalid Data!");
             } else {
                 uint8_t dispImuState = imuGetState();
-                if (calibState == CALIB_LOCK_WAITING && calibLockCount > 0 && (now - calibLastLockEventMs < 2500)) {
-                    dispImuState = 3;
-                }
-                displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, dispImuState, calibLockCount);
+                displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, dispImuState, 0);
             }
         } else {
             if(menuOpen)displayShowMenu(menuSelection,resetConfirm);

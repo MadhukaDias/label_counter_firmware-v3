@@ -15,10 +15,9 @@ void cfgLoad(AppConfig& cfg) {
     cfg.mqttIntervalMs     = prefs.getUInt("mqttInt",   DEF_MQTT_INTERVAL_MS);
     cfg.mqttEnabled        = prefs.getBool("mqttEn",    true);
     cfg.hasLockSolenoid    = prefs.getBool("hasSolen",  true);
+    cfg.vib.dropoutMs      = prefs.getUInt("dropoutMs",  250);
     cfg.lastCalibMax       = prefs.getUInt("cMax",      0);
     cfg.lastCalibMin       = prefs.getUInt("cMin",      0);
-    cfg.lastSpikeThr       = prefs.getUInt("cSThr",     0);
-    cfg.lastLockPeak       = prefs.getUInt("cLock",     0);
     cfg.lastCalibStatus    = prefs.getUChar("cStat",    0);
 
     // FIX: sanity-check the stored count. NVS can hold garbage from a first
@@ -59,10 +58,9 @@ void cfgSave(const AppConfig& cfg) {
     prefs.putBool("mqttEn",   cfg.mqttEnabled);
     prefs.putBool("hasSolen", cfg.hasLockSolenoid);
     prefs.putString("deviceId", cfg.deviceId);
+    prefs.putUInt("dropoutMs", cfg.vib.dropoutMs);
     prefs.putUInt("cMax",     cfg.lastCalibMax);
     prefs.putUInt("cMin",     cfg.lastCalibMin);
-    prefs.putUInt("cSThr",    cfg.lastSpikeThr);
-    prefs.putUInt("cLock",    cfg.lastLockPeak);
     prefs.putUChar("cStat",   cfg.lastCalibStatus);
 
     prefs.end();
@@ -76,10 +74,9 @@ void cfgReset(AppConfig& cfg) {
     cfg.vib.minDurationMs = DEF_MIN_DURATION_MS;
     cfg.vib.silenceMs     = DEF_SILENCE_MS;
     cfg.hasLockSolenoid   = true;
+    cfg.vib.dropoutMs     = 250;
     cfg.lastCalibMax      = 0;
     cfg.lastCalibMin      = 0;
-    cfg.lastSpikeThr      = 0;
-    cfg.lastLockPeak      = 0;
     cfg.lastCalibStatus   = 0;
     cfgSave(cfg);
 }

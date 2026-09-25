@@ -195,13 +195,13 @@ button:disabled:active, input:disabled:active { transform: none !important; back
         <input type="hidden" id="n-sthr">
       </div>
       <div class="scard" style="min-height: auto;">
-        <div class="slbl">Spike Thr</div>
+        <div class="slbl">Dropout(ms)</div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('spikethr',-50,0,30000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-spikethr" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('spikethr',50,0,30000)" disabled style="opacity:0.3;">+</button>
+          <button type="button" class="bdim btn-val" onclick="incVal('drop',-10,0,2000)" disabled style="opacity:0.3;">-</button>
+          <div class="sval" id="s-drop" style="margin-top:0;">--</div>
+          <button type="button" class="bdim btn-val" onclick="incVal('drop',10,0,2000)" disabled style="opacity:0.3;">+</button>
         </div>
-        <input type="hidden" id="n-spikethr">
+        <input type="hidden" id="n-drop">
       </div>
       <div class="scard" style="min-height: auto;">
         <div class="slbl">Min Dur(ms)</div>
@@ -214,17 +214,8 @@ button:disabled:active, input:disabled:active { transform: none !important; back
       </div>
     </div>
 
-    <!-- Row 2: cMax, cMin, Lock Peak -->
+    <!-- Row 2: cMin, cMax, Silence -->
     <div class="stats" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 14px;">
-      <div class="scard" style="min-height: auto;">
-        <div class="slbl">cMax</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('cmax',-50,0,30000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-cmax" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('cmax',50,0,30000)" disabled style="opacity:0.3;">+</button>
-        </div>
-        <input type="hidden" id="n-cmax">
-      </div>
       <div class="scard" style="min-height: auto;">
         <div class="slbl">cMin</div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
@@ -235,23 +226,22 @@ button:disabled:active, input:disabled:active { transform: none !important; back
         <input type="hidden" id="n-cmin">
       </div>
       <div class="scard" style="min-height: auto;">
-        <div class="slbl">Lock Peak</div>
+        <div class="slbl">cMax</div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
-          <button type="button" class="bdim btn-val" onclick="incVal('lpk',-50,0,30000)" disabled style="opacity:0.3;">-</button>
-          <div class="sval" id="s-lpk" style="margin-top:0;">--</div>
-          <button type="button" class="bdim btn-val" onclick="incVal('lpk',50,0,30000)" disabled style="opacity:0.3;">+</button>
+          <button type="button" class="bdim btn-val" onclick="incVal('cmax',-50,0,30000)" disabled style="opacity:0.3;">-</button>
+          <div class="sval" id="s-cmax" style="margin-top:0;">--</div>
+          <button type="button" class="bdim btn-val" onclick="incVal('cmax',50,0,30000)" disabled style="opacity:0.3;">+</button>
         </div>
-        <input type="hidden" id="n-lpk">
+        <input type="hidden" id="n-cmax">
       </div>
-    </div>
-
-    <!-- Silence Window -->
-    <div class="fg" style="margin-bottom:28px;">
-      <div class="fhdr"><span class="fname">Silence Window</span><span class="funit">ms</span></div>
-      <div class="fdesc">Quiet time after sewing stops before count triggers. Prevents double-counting on a single label.</div>
-      <div class="srow">
-        <input type="range" id="s-sil" min="200" max="5000" step="50" disabled style="opacity:0.4;">
-        <input type="number" id="n-sil" min="200" max="5000" step="50" readonly>
+      <div class="scard" style="min-height: auto;">
+        <div class="slbl">Silence(ms)</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:auto; width:100%;">
+          <button type="button" class="bdim btn-val" onclick="incVal('sil',-50,200,5000)" disabled style="opacity:0.3;">-</button>
+          <div class="sval" id="s-sil" style="margin-top:0;">--</div>
+          <button type="button" class="bdim btn-val" onclick="incVal('sil',50,200,5000)" disabled style="opacity:0.3;">+</button>
+        </div>
+        <input type="hidden" id="n-sil">
       </div>
     </div>
 
@@ -279,12 +269,9 @@ button:disabled:active, input:disabled:active { transform: none !important; back
         </div>
       </div>
       <div id="calib-step-2" style="margin:15px 0; display:none;">
-        <div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">Step 2: Solenoid Detection</div>
-        <div style="color:var(--dim); font-size:0.9rem; margin-bottom:10px;">Please actuate the lock solenoid manually.</div>
-        <div style="font-size:1.5rem; font-family:var(--mono); color:var(--acc); margin-bottom:15px;">
-          <span id="calib-locks">0</span> / 3
-        </div>
-        <button onclick="skipCalibPhase2()" style="padding:6px 12px; background:transparent; border:1px solid var(--dim); color:var(--dim); border-radius:4px; font-size:0.85rem; cursor:pointer;">Skip (No Solenoid)</button>
+        <div style="font-weight:bold; font-size:1.1rem; margin-bottom:5px;">Step 2: Machine Info</div>
+        <div id="calib-solen-info" style="color:var(--acc); font-size:1rem; margin-bottom:10px;">Checking...</div>
+        <div style="color:var(--dim); font-size:0.85rem;">Proceeding to sewing analysis...</div>
       </div>
       <div id="calib-step-3" style="margin:15px 0; display:none; color:#00e5a0; font-weight:bold; font-size:1.1rem;">
         Calibration Complete!
@@ -309,10 +296,6 @@ function showToast(msg) {
 }
 
 function applyLockState() {
-  const sSil = document.getElementById('s-sil');
-  
-  if (sSil) { sSil.disabled = isLocked; sSil.style.opacity = isLocked ? '0.4' : '1'; }
-  
   document.querySelectorAll('.btn-val').forEach(b => {
     b.disabled = isLocked;
     b.style.opacity = isLocked ? '0.3' : '1';
@@ -346,7 +329,7 @@ function toggleLock() {
   showToast(isLocked ? 'Controls Locked' : 'Controls Unlocked');
 }
 
-[['s-sil', 'n-sil'], ['s-mqi', 'n-mqi']]
+[['s-mqi', 'n-mqi']]
   .forEach(([sid, nid]) => {
     const s = document.getElementById(sid);
     const n = document.getElementById(nid);
@@ -389,14 +372,11 @@ async function loadConfig() {
     document.getElementById('n-cmin').value = d.lastCalibMin;
     document.getElementById('s-cmin').textContent = d.lastCalibMin;
 
-    document.getElementById('n-spikethr').value = d.lastSpikeThr;
-    document.getElementById('s-spikethr').textContent = d.lastSpikeThr;
+    document.getElementById('n-drop').value = d.dropoutMs;
+    document.getElementById('s-drop').textContent = d.dropoutMs;
 
-    document.getElementById('n-lpk').value = d.lastLockPeak;
-    document.getElementById('s-lpk').textContent = d.lastLockPeak;
-
-    if(document.getElementById('s-sil')) document.getElementById('s-sil').value = d.silence;
     document.getElementById('n-sil').value = d.silence;
+    document.getElementById('s-sil').textContent = d.silence;
     
     const mqtts = Math.round(d.mqttInterval / 1000);
     if(document.getElementById('s-mqi')) document.getElementById('s-mqi').value = mqtts;
@@ -460,11 +440,10 @@ document.getElementById('cfg-form').addEventListener('submit', async e => {
   const body = {
     threshold: +document.getElementById('n-thr').value,
     stopThr:   +document.getElementById('n-sthr').value,
-    spikeThr:  +document.getElementById('n-spikethr').value,
+    dropoutMs: +document.getElementById('n-drop').value,
     minDur:    +document.getElementById('n-dur').value,
     cMax:      +document.getElementById('n-cmax').value,
     cMin:      +document.getElementById('n-cmin').value,
-    lpk:       +document.getElementById('n-lpk').value,
     silence:   +document.getElementById('n-sil').value,
     mqttInterval: +document.getElementById('n-mqi').value * 1000,
     mqttEnabled: mqttEnabledState,
@@ -527,38 +506,16 @@ function openCalibrationModal() {
           calibTimer += 300;
           pbar.style.width = Math.min(100, (calibTimer / 3000) * 100) + '%';
         } else if (d.state === 3) {
+          // CALIB_LOCK_INFO: display-only info screen
           s1.style.display = 'none';
           s2.style.display = 'block';
           s3.style.display = 'none';
-          lcnt.textContent = d.lockCount;
-          
-          const s2HTML = document.getElementById('calib-step-2');
-          const skipBtn = s2HTML.querySelector('button');
-          if (skipBtn) skipBtn.style.display = 'inline-block';
-          
-          s2HTML.querySelector('div:nth-child(1)').textContent = 'Step 2: Solenoid Detection';
-          s2HTML.querySelector('div:nth-child(1)').style.color = '';
-          s2HTML.querySelector('div:nth-child(2)').textContent = 'Please actuate the lock solenoid manually.';
-          s2HTML.querySelector('div:nth-child(2)').style.color = 'var(--dim)';
-          s2HTML.querySelector('div:nth-child(2)').style.fontWeight = 'normal';
-          s2HTML.querySelector('div:nth-child(3)').style.display = 'block';
-          
-        } else if (d.state === 7) {
-          s1.style.display = 'none';
-          s2.style.display = 'block';
-          s3.style.display = 'none';
-          
-          const s2HTML = document.getElementById('calib-step-2');
-          const skipBtn = s2HTML.querySelector('button');
-          if (skipBtn) skipBtn.style.display = 'none';
-          
-          s2HTML.querySelector('div:nth-child(1)').textContent = 'NO LOCK SOLENOID';
-          s2HTML.querySelector('div:nth-child(1)').style.color = 'var(--acc2)';
-          s2HTML.querySelector('div:nth-child(2)').textContent = 'Skipping to Step 3...';
-          s2HTML.querySelector('div:nth-child(2)').style.color = 'var(--dim)';
-          s2HTML.querySelector('div:nth-child(2)').style.fontWeight = 'normal';
-          s2HTML.querySelector('div:nth-child(3)').style.display = 'none';
-          
+          const infoEl = document.getElementById('calib-solen-info');
+          if (infoEl) {
+            infoEl.textContent = d.hasSolenoid ? '✓ Lock Solenoid: PRESENT' : '✗ Lock Solenoid: NOT CONFIGURED';
+            infoEl.style.color = d.hasSolenoid ? 'var(--acc)' : 'var(--acc2)';
+          }
+
         } else if (d.state === 4) {
           s1.style.display = 'none';
           s2.style.display = 'none';
@@ -613,10 +570,6 @@ function autoCalibrate() {
   });
 }
 
-function skipCalibPhase2() {
-  fetch('/api/calib_skip', { method: 'POST' });
-}
-
 function abortCalibrate() {
   if (!confirm('Are you sure you want to cancel calibration?')) return;
   const b = document.getElementById('btn-abort');
@@ -665,8 +618,7 @@ static void handleGetConfig() {
     doc["deviceId"]     = _cfg->deviceId;
     doc["lastCalibMax"] = _cfg->lastCalibMax;
     doc["lastCalibMin"] = _cfg->lastCalibMin;
-    doc["lastSpikeThr"] = _cfg->lastSpikeThr;
-    doc["lastLockPeak"] = _cfg->lastLockPeak;
+    doc["dropoutMs"]    = _cfg->vib.dropoutMs;
     doc["cStat"]        = _cfg->lastCalibStatus;
     
     doc["tempStop"]     = _cfg->vib.stopThreshold;
@@ -682,10 +634,9 @@ static void handlePostConfig() {
 
     if (doc["threshold"].is<int>()) _cfg->vib.threshold = constrain((int)doc["threshold"], 100, 8000);
     if (doc["stopThr"].is<int>())   _cfg->vib.stopThreshold = constrain((int)doc["stopThr"], 0, 8000);
-    if (doc["spikeThr"].is<int>())  _cfg->lastSpikeThr = constrain((int)doc["spikeThr"], 0, 30000);
+    if (doc["dropoutMs"].is<int>()) _cfg->vib.dropoutMs = constrain((int)doc["dropoutMs"], 0, 2000);
     if (doc["cMax"].is<int>())      _cfg->lastCalibMax = constrain((int)doc["cMax"], 0, 30000);
     if (doc["cMin"].is<int>())      _cfg->lastCalibMin = constrain((int)doc["cMin"], 0, 30000);
-    if (doc["lpk"].is<int>())       _cfg->lastLockPeak = constrain((int)doc["lpk"], 0, 30000);
     if (doc["minDur"].is<int>())
         _cfg->vib.minDurationMs = constrain((int)doc["minDur"], 100, 3000);
     if (doc["silence"].is<int>())
@@ -721,18 +672,6 @@ static void handleCalibrate() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
-extern void skipCalibPhase2();
-static void handleCalibSkip() {
-    skipCalibPhase2();
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
-extern void abortCalibration();
-static void handleCalibAbort() {
-    abortCalibration();
-    server.send(200, "application/json", "{\"ok\":true}");
-}
-
 extern void getCalibStatus(int& state, int& lockCount, int& imuState, int& ftCount);
 static void handleCalibStatus() {
     int state, lockCount, imuState, ftCount;
@@ -743,6 +682,7 @@ static void handleCalibStatus() {
     doc["imuState"] = imuState;
     doc["ftCount"] = ftCount;
     doc["cStat"] = _cfg->lastCalibStatus;
+    doc["hasSolenoid"] = _cfg->hasLockSolenoid;
     String out; serializeJson(doc, out);
     server.send(200, "application/json", out);
 }
@@ -764,6 +704,12 @@ static void handleStatus() {
     server.send(200, "application/json", out);
 }
 
+extern void abortCalibration();
+static void handleCalibAbort() {
+    abortCalibration();
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handleMqttToggle() {
     _cfg->mqttEnabled = !_cfg->mqttEnabled;
     cfgSave(*_cfg);
@@ -783,7 +729,6 @@ void webServerInit(AppConfig* cfg) {
     server.on("/api/reset-config",HTTP_POST, handleResetConfig);
     server.on("/api/reset-count", HTTP_POST, handleResetCount);
     server.on("/api/calibrate",   HTTP_POST, handleCalibrate);
-    server.on("/api/calib_skip",  HTTP_POST, handleCalibSkip);
     server.on("/api/calib_abort", HTTP_POST, handleCalibAbort);
     server.on("/api/calib_status",HTTP_GET,  handleCalibStatus);
     server.on("/api/status",      HTTP_GET,  handleStatus);
