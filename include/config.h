@@ -26,7 +26,7 @@
        // and 0x1D at init and uses whichever answers, so a
        // mis-strapped module still works without a rebuild.
 #define ADXL_BW_RATE                                                           \
-  0x09 // BW_RATE reg code → 50 Hz output data rate
+  0x0B // BW_RATE reg code → 200 Hz output data rate (4x IMU_SAMPLE_HZ)
 
 // ADXL345 full-resolution sensitivity is fixed at 3.9 mg/LSB (256 LSB/g) on
 // every range, vs. the MPU-6050's 16384 LSB/g at ±2g — about 64x lower raw
@@ -37,9 +37,9 @@
 // portal instead.
 #define ADXL_MAG_GAIN 64
 
-#define IMU_SAMPLE_HZ 10 // polling rate
+#define IMU_SAMPLE_HZ 50 // polling rate
 #define IMU_SAMPLE_MS (1000 / IMU_SAMPLE_HZ)
-#define ROLL_AVG_SAMPLES 2 // rolling average window
+#define ROLL_AVG_SAMPLES 8 // rolling average window
 
 // ──────────────────────────────────────────────
 //  Default Vibration Parameters (NVS-overridable)

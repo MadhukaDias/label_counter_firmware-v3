@@ -292,6 +292,9 @@ bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut) {
     lastMag = mag;
 
     uint32_t now   = millis();
+    static uint32_t lastUpdateMs = now;
+    uint32_t deltaMs = now - lastUpdateMs;
+    lastUpdateMs = now;
 
     // If there is an extremely rapid magnitude change, it's a physical shock (solenoid)
     if (deltaMag > 15000) {
@@ -306,6 +309,11 @@ bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut) {
         vibrating = (mag >= cfg.stopThreshold);
     } else {
         vibrating = (mag >= cfg.threshold);
+    }
+    
+    static uint32_t lastVibratingMs = 0;
+    if (vibrating) {
+        lastVibratingMs = now;
     }
     
     bool counted   = false;
@@ -324,7 +332,11 @@ bool imuUpdate(const VibConfig& cfg, uint32_t lockPeak, bool* vibActiveOut) {
 
         case SewState::VIBRATING:
             if (!vibrating) {
-                state = SewState::IDLE;   // dropped before min duration
+                if ((now - lastVibratingMs) > 250) {
+                    state = SewState::IDLE;   // dropped before min duration
+                } else {
+                    stateEnterMs += deltaMs;  // Pause the timer during dropout
+                }
             } else if ((now - stateEnterMs) >= cfg.minDurationMs) {
                 state        = SewState::CONFIRMED;
                 stateEnterMs = now;
