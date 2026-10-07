@@ -79,6 +79,14 @@
 #define WIFI_RETRY_MS 30000    // retry saved station credentials
 
 // ──────────────────────────────────────────────
+//  Clock (NTP)
+// ──────────────────────────────────────────────
+#define NTP_SERVER_1 "pool.ntp.org"
+#define NTP_SERVER_2 "time.google.com"
+// POSIX TZ string. Sri Lanka is UTC+5:30 (POSIX signs are inverted).
+#define TIME_TZ "<+0530>-5:30"
+
+// ──────────────────────────────────────────────
 //  NVS namespace
 // ──────────────────────────────────────────────
 #define NVS_NAMESPACE "lc_cfg"

@@ -11,6 +11,7 @@
 #include "cfg_manager.h"
 #include "mqtt_mgr.h"
 #include "web_server_mgr.h"
+#include "time_mgr.h"
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 static AppConfig appCfg;
@@ -243,6 +244,7 @@ void setup() {
     // server and MQTT client both open sockets, so they must come AFTER this or
     // server.begin() asserts ("tcpip_send_msg_wait_sem ... Invalid mbox").
     networkInit();
+    timeInit();
     webServerInit(&appCfg);
     mqttInit(appCfg.deviceId);
     mqttSetEnabled(appCfg.mqttEnabled);
@@ -553,6 +555,8 @@ void loop() {
         lastDisplayMs += 100;
         String stationIP=networkStationIP(), apIP=networkPortalIP();
         displayUpdateCount(appCfg.count);
+        char clockText[9];timeFormatClock(clockText,sizeof(clockText));
+        displayUpdateClock(clockText);
         displayUpdateMachine(static_cast<uint8_t>(imuGetState()),appCfg.lastCalibStatus);
         displayUpdateNetwork(wifiOk,appCfg.mqttEnabled,mqttIsConnected(),stationIP.c_str(),networkPortalActive(),apIP.c_str());
         

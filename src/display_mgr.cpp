@@ -20,7 +20,7 @@ uint32_t count=0, messageUntil=0;
 bool wifi=false, mqttEnabled=true, mqtt=false, portal=false, confirm=false;
 uint8_t machine=0, calStatus=0, calStage=0, captures=0, imu=0, locks=0, selection=0;
 uint16_t progress=0;
-char stationIP[20]="", portalIP[20]="", ap[33]="LabelCounter", msg1[40]="", msg2[40]="";
+char stationIP[20]="", portalIP[20]="", ap[33]="LabelCounter", msg1[40]="", msg2[40]="", clock_[9]="--:--";
 void copy(char* out,size_t n,const char* in){snprintf(out,n,"%s",in?in:"");}
 void text(int x,int y,const char* s,uint16_t color=WHITE,uint8_t size=1){
     canvas.setTextSize(size); canvas.setTextColor(color); canvas.setCursor(x,y); canvas.print(s);
@@ -30,6 +30,7 @@ void center(int y,const char* s,uint16_t color=WHITE,uint8_t size=1){
 }
 void header(const char* title,uint16_t color){
     text(4,3,title,color);
+    text(W-4-int(strlen(clock_))*6,3,clock_,WHITE);
     text(4,17,wifi?"WiFi OK":"WiFi LOST",wifi?GREEN:RED);
     const char* status=!mqttEnabled?"MQTT OFF":mqtt?"MQTT OK":"MQTT LOST";
     text(94,17,status,!mqttEnabled?GRAY:mqtt?GREEN:RED);
@@ -60,6 +61,7 @@ void displayUpdateNetwork(bool w,bool enabled,bool connected,const char* ip,bool
     wifi=w; mqttEnabled=enabled; mqtt=w&&enabled&&connected; portal=active;
     copy(stationIP,sizeof(stationIP),ip);copy(portalIP,sizeof(portalIP),apIP);
 }
+void displayUpdateClock(const char* hhmm){copy(clock_,sizeof(clock_),hhmm);}
 void displayUpdateMachine(uint8_t state,uint8_t status){machine=state;calStatus=status;}
 void displayShowRunning(){mode=RUN;}
 void displayShowPortal(const char* name,const char* ip){mode=PORTAL;copy(ap,sizeof(ap),name);copy(portalIP,sizeof(portalIP),ip);}

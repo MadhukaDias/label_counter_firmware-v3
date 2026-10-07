@@ -5,6 +5,7 @@ void displayInit();
 void displayUpdateCount(uint32_t count);
 void displayUpdateNetwork(bool wifi, bool mqttEnabled, bool mqttConnected,
                           const char* stationIP, bool portalActive, const char* portalIP);
+void displayUpdateClock(const char* hhmm);
 void displayUpdateMachine(uint8_t detectorState, uint8_t calibrationStatus);
 void displayShowRunning();
 void displayShowPortal(const char* apName, const char* apIP);
