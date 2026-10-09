@@ -5,7 +5,7 @@ int main(){
  displayInit();fakeMillis=2000;displayUpdateClock("12:34");
  displayUpdateNetwork(true,true,true,"192.168.100.100",false,"");
  displayShowRunning();
- for(uint8_t s=0;s<4;s++)for(uint32_t n:{0u,1234u,99999u,UINT32_MAX}){
+ for(uint8_t s=0;s<5;s++)for(uint32_t n:{0u,1234u,99999u,UINT32_MAX}){
   displayUpdateMachine(s,0);displayUpdateCount(n);displayRender();
  }
  int before=tft.transfers;displayRender();assert(tft.transfers==before);

@@ -163,8 +163,7 @@ void abortCalibration() {
 
 // Button actions retain calibration capture/undo behavior from the original.
 static void captureOrSkip(){
-    if(calibState==CALIB_LOCK_INFO)calibState=CALIB_SEW_WAITING; // manually advance past info screen
-    else if(calibState==CALIB_SEW_WAITING||calibState==CALIB_FINE_TUNE)calibState=CALIB_SEW_DONE;
+    if(calibState==CALIB_SEW_WAITING||calibState==CALIB_FINE_TUNE)calibState=CALIB_SEW_DONE;
 }
 static void undoCapture(uint32_t now){
     if(calibState!=CALIB_FINE_TUNE||fineTuneCount==0)return;
@@ -270,6 +269,7 @@ void loop() {
 
         const bool calibrationSample = calibState != CALIB_IDLE;
         bool newVib  = false;
+        imuSetMaxDurationCheck(!calibrationSample);
         bool counted = imuUpdate(appCfg.vib, &newVib);
         vibActive    = newVib;
         uint32_t currentMag = imuGetMagnitude();
@@ -404,8 +404,8 @@ void loop() {
                 
                 // 3. Minimum Duration Calculation
                 // midLen is half of procIdx. The duration of middle 50% is midLen * IMU_SAMPLE_MS
-                // minDuration = duration / 2
-                appCfg.vib.minDurationMs = (uint32_t)((midLen * IMU_SAMPLE_MS) / 2);
+                // minDuration = 75% of the above-threshold sewing time = middle duration * 1.5
+                appCfg.vib.minDurationMs = (uint32_t)((midLen * IMU_SAMPLE_MS * 3) / 2);
                 if (appCfg.vib.minDurationMs < 150) appCfg.vib.minDurationMs = 150; // clamp bottom
                 
                 // 4. Threshold Calculation
@@ -557,7 +557,7 @@ void loop() {
         displayUpdateCount(appCfg.count);
         char clockText[9];timeFormatClock(clockText,sizeof(clockText));
         displayUpdateClock(clockText);
-        displayUpdateMachine(static_cast<uint8_t>(imuGetState()),appCfg.lastCalibStatus);
+        displayUpdateMachine(imuAttemptExceeded()?4:static_cast<uint8_t>(imuGetState()),appCfg.lastCalibStatus);
         displayUpdateNetwork(wifiOk,appCfg.mqttEnabled,mqttIsConnected(),stationIP.c_str(),networkPortalActive(),apIP.c_str());
         
         if (calibState != CALIB_IDLE) {
@@ -565,7 +565,7 @@ void loop() {
                 displayShowMessage("WARNING", "Invalid Data!");
             } else {
                 uint8_t dispImuState = imuGetState();
-                displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, dispImuState, 0);
+                displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, dispImuState, appCfg.hasLockSolenoid?1:0);
             }
         } else {
             if(menuOpen)displayShowMenu(menuSelection,resetConfirm);

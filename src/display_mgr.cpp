@@ -45,7 +45,7 @@ void footerIP(){
     center(118,line,portal?AMBER:GRAY);
 }
 const char* machineName(){
-    switch(machine){case 1:return "DETECTING";case 2:return "SEWING";case 3:return "CONFIRMING";default:return "IDLE";}
+    switch(machine){case 1:return "DETECTING";case 2:return "SEWING";case 3:return "CONFIRMING";case 4:return "EXCEEDING";default:return "IDLE";}
 }
 }
 void displayInit(){
@@ -79,12 +79,12 @@ void displayRender(){
         header(notificationError?"ERROR":"SYSTEM",notificationError?RED:AMBER);
         center(49,msg1,WHITE);center(69,msg2,GRAY);footerIP();
     }else if(mode==RUN){
-        header(machineName(),machine?AMBER:GREEN);text(4,36,"COUNT",GRAY);
+        header(machineName(),machine==4?RED:machine?AMBER:GREEN);text(4,36,"COUNT",GRAY);
         char value[11];snprintf(value,sizeof(value),"%lu",(unsigned long)count);
         uint8_t size=4;while(strlen(value)*6*size>152&&size>1)--size;
         center(54,value,WHITE,size);
         text(4,100,calStatus==1?"CAL OK":calStatus==2?"CAL ABORT":"CAL NEEDED",calStatus==1?GREEN:AMBER);
-        text(94,100,machineName(),machine?GREEN:GRAY);footerIP();
+        text(94,100,machineName(),machine==4?RED:machine?GREEN:GRAY);footerIP();
     }else if(mode==PORTAL){
         header("WI-FI SETUP",AMBER);center(39,"Connect to AP",GRAY);
         // SSID may be up to 32 characters: clamp to a display-safe label.
@@ -107,13 +107,13 @@ void displayRender(){
             text(4,39,"1 NOISE SCAN");text(4,57,"Keep machine off",GRAY);
             canvas.drawRect(4,80,152,10,LINE);canvas.fillRect(5,81,std::min(150,int(progress))*150/150,8,AMBER);break;
         case 3:
-            text(4,39,"2 LOCK SCAN");text(4,57,imu==3?"CONFIRMING...":"Trigger lock stitch",GRAY);
-            snprintf(line,sizeof(line),"%u of 3 detected",locks);text(4,77,line);text(4,96,"SELECT / +/-: skip",GRAY);break;
+            // Info only: `locks` carries the saved "has lock solenoid" setting.
+            text(4,49,"Lock solenoid",GRAY);text(4,69,locks?"DETECTED":"NOT PRESENT",locks?GREEN:AMBER);break;
         case 4:
-            text(4,39,"3 FIRST SEW");text(4,57,"Sew one label",GRAY);
+            text(4,39,"2 FIRST SEW");text(4,57,"Sew one label",GRAY);
             text(4,77,imu==3?"CONFIRMING...":"Auto-detecting...",GREEN);text(4,96,"SELECT / +: capture",GRAY);break;
         case 5:
-            text(4,39,"4 FINE TUNE");snprintf(line,sizeof(line),"%u of 5 captured",captures);text(4,57,line);
+            text(4,39,"3 FINE TUNE");snprintf(line,sizeof(line),"%u of 5 captured",captures);text(4,57,line);
             text(4,77,imu==3?"CONFIRMING...":"Sew next label",GREEN);text(4,96,"+:capture  -:undo",GRAY);break;
         case 6:text(4,49,"Processing data...",AMBER);break;
         case 7:text(4,49,"No lock solenoid",AMBER);text(4,69,"Skipping lock scan",GRAY);break;

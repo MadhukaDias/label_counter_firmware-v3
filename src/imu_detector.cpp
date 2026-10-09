@@ -32,6 +32,12 @@ static uint32_t lastVibEndMs   = 0;
 // State machine
 static SewState state        = SewState::IDLE;
 static uint32_t stateEnterMs = 0;
+// Total time above threshold in the current attempt (dropouts excluded), and
+// whether it exceeded the allowed maximum so the attempt must not be counted.
+static uint32_t attemptVibMs = 0;
+static bool attemptOverrun   = false;
+static bool maxDurationCheck = true;
+void imuSetMaxDurationCheck(bool enabled) { maxDurationCheck = enabled; }
 
 // ── ADXL345 low-level I2C ────────────────────────────────────────────────────
 
@@ -314,7 +320,11 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
     static uint32_t lastVibratingMs = 0;
     if (vibrating) {
         lastVibratingMs = now;
+        attemptVibMs += deltaMs;
     }
+    // minDuration is 75% of a normal sew, so minDuration*4/3 is the full sew
+    // time (100%). Add tolerance against false rejects.
+    const uint32_t maxAttemptMs = (cfg.minDurationMs * 4) / 3 + MAX_DURATION_TOLERANCE_MS;
     
     bool counted   = false;
 
@@ -327,6 +337,8 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
                 state        = SewState::VIBRATING;
                 stateEnterMs = now;
                 lastVibStartMs = now;
+                attemptVibMs = 0;
+                attemptOverrun = false;
             }
             break;
 
@@ -345,6 +357,10 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
             break;
 
         case SewState::CONFIRMED:
+            if (maxDurationCheck && attemptVibMs > maxAttemptMs && !attemptOverrun) {
+                attemptOverrun = true;
+                Serial.println("[IMU] Attempt too long; will not be counted");
+            }
             if (!vibrating) {
                 state        = SewState::COOLING;
                 stateEnterMs = now;
@@ -360,8 +376,13 @@ bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut) {
                 lastVibStartMs = now;
             } else if ((now - stateEnterMs) >= cfg.silenceMs) {
                 state   = SewState::IDLE;
-                counted = true;
-                Serial.println("[IMU] COUNT triggered");
+                if (attemptOverrun) {
+                    attemptOverrun = false;
+                    Serial.println("[IMU] Over-long attempt discarded");
+                } else {
+                    counted = true;
+                    Serial.println("[IMU] COUNT triggered");
+                }
             }
             break;
     }
@@ -374,3 +395,4 @@ int32_t imuGetMagnitude() { return lastMag; }
 uint32_t imuGetLastVibStart() { return lastVibStartMs; }
 uint32_t imuGetLastVibEnd()   { return lastVibEndMs; }
 int imuGetState() { return (int)state; }
+bool imuAttemptExceeded() { return attemptOverrun && state != SewState::IDLE; }

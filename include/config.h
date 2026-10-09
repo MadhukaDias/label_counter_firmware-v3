@@ -45,8 +45,11 @@
 //  Default Vibration Parameters (NVS-overridable)
 // ──────────────────────────────────────────────
 #define DEF_VIB_THRESHOLD 800   // raw accel magnitude delta (mg units * 100)
-#define DEF_MIN_DURATION_MS 400 // vibration must persist this long
+#define DEF_MIN_DURATION_MS 1000 // vibration must persist this long
 #define DEF_SILENCE_MS 600      // quiet period before count triggers
+// A sewing attempt longer than minDuration*4/3 (100% of a normal sew) + this tolerance is
+// not counted (e.g. operator holding the pedal to adjust the needle).
+#define MAX_DURATION_TOLERANCE_MS 250
 
 // ──────────────────────────────────────────────
 //  Button debounce

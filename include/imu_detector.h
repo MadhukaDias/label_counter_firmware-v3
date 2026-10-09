@@ -18,6 +18,10 @@ void imuCalibrateBase();
 // Returns true when a new sewing cycle has been COUNTED.
 bool imuUpdate(const VibConfig& cfg, bool* vibActiveOut = nullptr);
 
+// Enable/disable the "attempt too long" rejection. Must be off during
+// calibration, where minDurationMs is only a placeholder.
+void imuSetMaxDurationCheck(bool enabled);
+
 // Raw magnitude (for live display / calibration)
 int32_t imuGetMagnitude();
 
@@ -28,3 +32,5 @@ bool imuSensorPresent();
 uint32_t imuGetLastVibStart();
 uint32_t imuGetLastVibEnd();
 int imuGetState();
+// True while the current attempt has exceeded the max duration (will not count).
+bool imuAttemptExceeded();

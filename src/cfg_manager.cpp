@@ -15,7 +15,7 @@ void cfgLoad(AppConfig& cfg) {
     cfg.mqttIntervalMs     = prefs.getUInt("mqttInt",   DEF_MQTT_INTERVAL_MS);
     cfg.mqttEnabled        = prefs.getBool("mqttEn",    true);
     cfg.hasLockSolenoid    = prefs.getBool("hasSolen",  true);
-    cfg.vib.dropoutMs      = prefs.getUInt("dropoutMs",  250);
+    cfg.vib.dropoutMs      = prefs.getUInt("dropoutMs",  200);
     cfg.lastCalibMax       = prefs.getUInt("cMax",      0);
     cfg.lastCalibMin       = prefs.getUInt("cMin",      0);
     cfg.lastCalibStatus    = prefs.getUChar("cStat",    0);
@@ -74,7 +74,7 @@ void cfgReset(AppConfig& cfg) {
     cfg.vib.minDurationMs = DEF_MIN_DURATION_MS;
     cfg.vib.silenceMs     = DEF_SILENCE_MS;
     cfg.hasLockSolenoid   = true;
-    cfg.vib.dropoutMs     = 250;
+    cfg.vib.dropoutMs     = 200;
     cfg.lastCalibMax      = 0;
     cfg.lastCalibMin      = 0;
     cfg.lastCalibStatus   = 0;
