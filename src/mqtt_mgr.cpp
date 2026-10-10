@@ -1,5 +1,6 @@
 #include "mqtt_mgr.h"
 #include "config.h"
+#include "ota_mgr.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -28,8 +29,13 @@ static std::atomic<bool> _enabled{true};
 
 // ── Subscription callback ─────────────────────────────────────────────────────
 static void onMessage(char* topic, byte* payload, unsigned int len) {
-    // Remote config update via MQTT (optional future use)
     Serial.printf("[MQTT] Msg on %s: %.*s\n", topic, (int)len, payload);
+    // "labelcounter/all/ota" (broadcast) or "labelcounter/<id>/ota": check GitHub
+    // for new firmware now. The payload is ignored; the update itself is only
+    // installed if its SHA-256 and signature verify, so a spoofed trigger on the
+    // public broker can at worst cause an early (rate-limited) check.
+    size_t tl = strlen(topic);
+    if (tl >= 4 && strcmp(topic + tl - 4, "/ota") == 0) otaRequestCheck();
 }
 
 // ── Reconnect (non-blocking) ──────────────────────────────────────────────────
@@ -43,6 +49,9 @@ static void reconnect() {
         char topicCfg[64];
         snprintf(topicCfg, sizeof(topicCfg), "labelcounter/%s/config", _myDeviceId);
         mqttClient.subscribe(topicCfg);
+        snprintf(topicCfg, sizeof(topicCfg), "labelcounter/%s/ota", _myDeviceId);
+        mqttClient.subscribe(topicCfg);
+        mqttClient.subscribe("labelcounter/all/ota");
     } else {
         Serial.printf("[MQTT] Failed rc=%d\n", mqttClient.state());
     }

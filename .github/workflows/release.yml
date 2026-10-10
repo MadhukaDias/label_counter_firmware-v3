@@ -1,0 +1,65 @@
+name: Build & Release Firmware
+
+# Release by pushing a tag:  git tag v1.0.1 && git push origin v1.0.1
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: pio-${{ hashFiles('platformio.ini') }}
+
+      - run: pip install platformio
+
+      - name: Build
+        env:
+          PLATFORMIO_BUILD_FLAGS: -DFW_VERSION=\"${{ github.ref_name }}\"
+        run: pio run -e ci
+
+      - name: Sign and create manifest
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          mkdir release
+          cp .pio/build/ci/firmware.bin release/firmware.bin
+          cd release
+          printf '%s\n' "$OTA_SIGNING_KEY" > /tmp/key.pem
+          openssl dgst -sha256 -sign /tmp/key.pem -out firmware.sig firmware.bin
+          rm /tmp/key.pem
+          SHA=$(sha256sum firmware.bin | cut -d' ' -f1)
+          SIG=$(xxd -p firmware.sig | tr -d '\n')
+          SIZE=$(stat -c%s firmware.bin)
+          printf '{"version":"%s","sha256":"%s","sig":"%s","size":%s}\n' \
+            "${{ github.ref_name }}" "$SHA" "$SIG" "$SIZE" > version.json
+          cat version.json
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/firmware.bin
+            release/version.json
+          generate_release_notes: true
+
+      # Tell every online device to check now (they also poll every 6 h as a fallback).
+      - name: Notify devices over MQTT
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y -qq mosquitto-clients
+          mosquitto_pub -h broker.emqx.io -p 1883 -t labelcounter/all/ota -m "${{ github.ref_name }}"

@@ -12,6 +12,7 @@
 #include "mqtt_mgr.h"
 #include "web_server_mgr.h"
 #include "time_mgr.h"
+#include "ota_mgr.h"
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 static AppConfig appCfg;
@@ -247,7 +248,8 @@ void setup() {
     webServerInit(&appCfg);
     mqttInit(appCfg.deviceId);
     mqttSetEnabled(appCfg.mqttEnabled);
-    Serial.println("[BOOT] Ready.");
+    otaMgrInit();
+    Serial.printf("[BOOT] Ready. Firmware %s\n", FW_VERSION);
 }
 
 // ── Loop ──────────────────────────────────────────────────────────────────────
@@ -262,6 +264,7 @@ void loop() {
     mqttSetEnabled(appCfg.mqttEnabled);
     if(wifiOk&&!otaStarted){ArduinoOTA.setHostname(appCfg.deviceId);ArduinoOTA.begin();otaStarted=true;}
     if(wifiOk&&otaStarted)ArduinoOTA.handle();
+    otaMgrLoop();
 
     // ── IMU at fixed rate ──
     if (now - lastImuMs >= IMU_SAMPLE_MS) {
@@ -567,6 +570,9 @@ void loop() {
                 uint8_t dispImuState = imuGetState();
                 displayShowCalibration((uint8_t)calibState, fineTuneCount, calibIdx, dispImuState, appCfg.hasLockSolenoid?1:0);
             }
+        } else if (otaProgress() >= 0) {
+            char pct[16]; snprintf(pct, sizeof(pct), "%d%%", otaProgress());
+            displayShowMessage("UPDATING FW", pct);
         } else {
             if(menuOpen)displayShowMenu(menuSelection,resetConfirm);
             else if(networkView&&networkPortalActive())displayShowPortal(WIFI_AP_NAME,apIP.c_str());
